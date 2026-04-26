@@ -1,0 +1,21 @@
+{
+  "username": "你的学号",
+  "password": "你的密码",
+  "use_webvpn": false,
+  "interval": 1800,
+  "data_dir": "./data",
+  "notify": {
+    "wecom_webhook": "",
+    "serverchan_key": "",
+    "dingtalk_webhook": "",
+    "bark_key": "",
+    "feishu_webhook": "",
+    "pushdeer_key": "",
+    "telegram_token": "",
+    "telegram_chat_id": ""
+  },
+  "base_url": "https://zhjwxs.neau.edu.cn",
+  "webvpn_auth": "https://authserver-443.webvpn.neau.edu.cn/authserver",
+  "webvpn_base": "https://zhjwxs-443.webvpn.neau.edu.cn",
+  "cas_service": "https://webvpn.neau.edu.cn/users/auth/cas"
+}
