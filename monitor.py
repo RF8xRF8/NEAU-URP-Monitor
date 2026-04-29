@@ -457,14 +457,22 @@ def load_data(data_dir: str, name: str):
     if not path.exists():
         return None
     try:
-        return json.loads(path.read_text(encoding="utf-8"))
+        obj = json.loads(path.read_text(encoding="utf-8"))
+        # 兼容 wrapper: lists are returned as-is; dicts containing fetch_time
+        # may either be a wrapper with key 'data' or a payload where we strip fetch_time
+        if isinstance(obj, dict) and 'fetch_time' in obj:
+            if 'data' in obj:
+                return obj['data']
+            # strip fetch_time and return remaining dict
+            return {k: v for k, v in obj.items() if k != 'fetch_time'}
+        return obj
     except Exception:
         return None
 
 
 def save_data(data_dir: str, name: str, payload, fetch_time: str):
     """
-    将 payload 原样写入 data/{name}.json，同时记录抓取时间到 {name}_meta.json。
+    将 payload 原样写入 data/{name}.json，同时在保存的 JSON 中嵌入抓取时间 `fetch_time`。
     若数据有变化，先将旧版本归档到 data/archive/{name}/ 下。
     """
     path = _data_path(data_dir, name)
@@ -473,8 +481,22 @@ def save_data(data_dir: str, name: str, payload, fetch_time: str):
     if path.exists():
         try:
             old_text = path.read_text(encoding="utf-8")
-            new_text = json.dumps(payload, ensure_ascii=False, indent=2)
-            if old_text.strip() != new_text.strip():
+            try:
+                old_obj = json.loads(old_text)
+            except Exception:
+                old_obj = None
+
+            # 抽取旧的 core payload 以便比较（兼容带 fetch_time 的格式）
+            old_core = None
+            if isinstance(old_obj, dict) and 'fetch_time' in old_obj:
+                if 'data' in old_obj:
+                    old_core = old_obj['data']
+                else:
+                    old_core = {k: v for k, v in old_obj.items() if k != 'fetch_time'}
+            else:
+                old_core = old_obj
+
+            if old_core is None or json.dumps(old_core, ensure_ascii=False, sort_keys=True) != json.dumps(payload, ensure_ascii=False, sort_keys=True):
                 archive_dir = Path(data_dir) / "archive" / name
                 archive_dir.mkdir(parents=True, exist_ok=True)
                 ts = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
@@ -482,12 +504,18 @@ def save_data(data_dir: str, name: str, payload, fetch_time: str):
         except Exception as e:
             log.warning(f"归档旧数据失败: {e}")
 
-    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    # 将 payload 包装或注入抓取时间后写入文件：
+    # - 若 payload 为 list，则写为 {fetch_time, data: [...]}
+    # - 若 payload 为 dict，则在不覆盖原有键的前提下添加 fetch_time
+    if isinstance(payload, list):
+        out = {"fetch_time": fetch_time, "data": payload}
+    elif isinstance(payload, dict):
+        out = dict(payload)
+        out['fetch_time'] = fetch_time
+    else:
+        out = {"fetch_time": fetch_time, "data": payload}
 
-    # 写元数据
-    meta_path = _data_path(data_dir, f"{name}_meta")
-    meta_path.write_text(json.dumps({"fetch_time": fetch_time}, ensure_ascii=False, indent=2),
-                         encoding="utf-8")
+    path.write_text(json.dumps(out, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
 def record_change(data_dir: str, entry: dict):
@@ -509,7 +537,17 @@ def _flatten_schedule(raw) -> list[dict]:
       - dict with xkxx[0]（新版接口）：展平每门课的 timeAndPlaceList
     """
     if isinstance(raw, list):
-        return raw
+        # 保留原始条目，若条目为 dict，包装为 raw_course
+        out = []
+        for it in raw:
+            if isinstance(it, dict):
+                item = dict(it)
+                item.setdefault('raw_course', deepcopy(it))
+                item.setdefault('raw_session', None)
+                out.append(item)
+            else:
+                out.append(it)
+        return out
 
     if isinstance(raw, dict):
         xkxx = raw.get("xkxx")
@@ -528,8 +566,19 @@ def _flatten_schedule(raw) -> list[dict]:
 
                 tps = course.get("timeAndPlaceList") or []
                 if not isinstance(tps, list) or not tps:
-                    rows.append({"kch": kch, "kcm": kcm, "kxh": kxh, "skjs": skjs,
-                                 "skxq": "", "skjc": "", "skzc": skzc, "jxdd": ""})
+                    item = {
+                        "kch": kch,
+                        "kcm": kcm,
+                        "kxh": kxh,
+                        "skjs": skjs,
+                        "skxq": "",
+                        "skjc": "",
+                        "skzc": skzc,
+                        "jxdd": "",
+                        "raw_course": deepcopy(course),
+                        "raw_session": None,
+                    }
+                    rows.append(item)
                     continue
 
                 for tp in tps:
@@ -541,7 +590,7 @@ def _flatten_schedule(raw) -> list[dict]:
                         skjc = f"{start}-{start + span - 1}"
                     else:
                         skjc = str(start or tp.get("classSessionsName") or "")
-                    rows.append({
+                    item = {
                         "kch": kch or str(tp.get("coureNumber") or ""),
                         "kcm": kcm or str(tp.get("coureName") or ""),
                         "kxh": kxh,
@@ -550,7 +599,10 @@ def _flatten_schedule(raw) -> list[dict]:
                         "skjc": skjc,
                         "skzc": str(tp.get("classWeek") or skzc),
                         "jxdd": str(tp.get("classroomName") or ""),
-                    })
+                        "raw_course": deepcopy(course),
+                        "raw_session": deepcopy(tp),
+                    }
+                    rows.append(item)
             return rows
 
         # 其他 dict 包装格式（尝试常见 key）
@@ -604,18 +656,22 @@ def build_schedule_dedup(raw_list: list[dict]) -> dict:
                   or (item.get("id") or {}).get("coureSequenceNumber") or "").strip()
         key = f"{kxh}_{kch}"
         if key not in groups:
+            # 复制一些通用字段，并保存 first_meta 以保留课程级别的其它原始字段
+            first_meta = {k: v for k, v in item.items() if k not in ("skxq", "skjc", "skzc", "jxdd", "raw_session")}
             groups[key] = {
                 "kch": kch,
                 "kxh": kxh,
                 "kcm": str(item.get("kcm") or item.get("courseName") or ""),
                 "skjs": str(item.get("skjs") or item.get("attendClassTeacher") or "").strip(),
                 "sessions": [],
+                "meta": first_meta,
             }
         groups[key]["sessions"].append({
             "skxq": str(item.get("skxq") or item.get("classDay") or ""),
             "skjc": str(item.get("skjc") or item.get("section") or ""),
             "skzc": str(item.get("skzc") or item.get("weekRange") or ""),
             "jxdd": str(item.get("jxdd") or item.get("classroom") or item.get("classroomName") or ""),
+            "raw_session": item.get("raw_session"),
         })
 
     courses = list(groups.values())
@@ -853,13 +909,14 @@ def run_once(config: dict):
         dedup = build_schedule_dedup(flat_list)
         log.info(f"[课程表] 去重后 {dedup['total_course_count']} 门课")
 
-        # 保存原始数据（原样）
-        save_data(data_dir, "schedule_raw", raw_schedule, fetch_time)
-        # 保存去重结构（供 server.py 使用）
-        old_sched = load_data(data_dir, "schedule")
-        save_data(data_dir, "schedule", dedup, fetch_time)
+        # 保存展平后的课程记录到 schedule.json（包含所有原始字段和 fetch_time）
+        save_data(data_dir, "schedule", flat_list, fetch_time)
 
-        if old_sched is None:
+        # 为变动比对准备：读取旧的平铺列表并构建去重结构进行比对
+        old_sched_raw = load_data(data_dir, "schedule")
+        old_sched = build_schedule_dedup(old_sched_raw if isinstance(old_sched_raw, list) else [])
+
+        if old_sched_raw is None:
             # 首次运行：记录初始化，不计入变动次数
             is_first_run_any = True
             entry = {
@@ -891,8 +948,6 @@ def run_once(config: dict):
     if raw_term is not None:
         flat_term = _flatten_this_term_scores(raw_term)
         log.info(f"[本学期成绩] {len(flat_term)} 条")
-        save_data(data_dir, "this_term_scores_raw", raw_term, fetch_time)
-
         old_term = load_data(data_dir, "this_term_scores")
         save_data(data_dir, "this_term_scores", flat_term, fetch_time)
 
@@ -919,8 +974,6 @@ def run_once(config: dict):
     if raw_all is not None:
         flat_all = _flatten_all_scores(raw_all)
         log.info(f"[历史成绩] {len(flat_all)} 条")
-        save_data(data_dir, "all_scores_raw", raw_all, fetch_time)
-
         old_all = load_data(data_dir, "all_scores")
         save_data(data_dir, "all_scores", flat_all, fetch_time)
 
@@ -945,7 +998,6 @@ def run_once(config: dict):
     # ── 4. GPA ────────────────────────────────────────────────────
     raw_gpa = fetch_gpa_overview(sess, base_url)
     if raw_gpa is not None:
-        save_data(data_dir, "gpa_raw", raw_gpa, fetch_time)
         old_gpa = load_data(data_dir, "gpa")
         save_data(data_dir, "gpa", raw_gpa, fetch_time)
 

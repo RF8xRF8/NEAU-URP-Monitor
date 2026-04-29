@@ -53,13 +53,7 @@ def _load_field_labels() -> dict:
             return {k: v for k, v in raw.items() if k != "说明"}
         except Exception:
             pass
-    # 内置最小集（兜底）
-    return {
-        "kch": "课程号", "kxh": "课序号", "kcm": "课程名称", "skjs": "任课教师",
-        "skxq": "上课星期", "skjc": "上课节次", "skzc": "上课周次", "jxdd": "上课地点",
-        "cj": "成绩", "jd": "绩点", "xf": "学分", "gradeName": "成绩等级",
-        "gpa": "GPA", "class_rank": "班级排名", "grade_rank": "年级排名", "generated_at": "生成时间",
-    }
+    return {}
 
 FIELD_LABELS = _load_field_labels()
 
@@ -104,6 +98,34 @@ def _detect_max_week(schedule_data: dict) -> int:
     return max(mx, get_current_week())
 
 
+def build_schedule_dedup_from_list(raw_list: list) -> dict:
+    """从平铺的课程条目列表构建去重后的课程结构（按课序号+课程号合并）。"""
+    groups = {}
+    for item in raw_list or []:
+      kch = str(item.get("kch") or item.get("courseNumber") or "").strip()
+      kxh = str(item.get("kxh") or item.get("coureSequenceNumber") or "").strip()
+      key = f"{kxh}_{kch}"
+      if key not in groups:
+        first_meta = {k: v for k, v in (item or {}).items() if k not in ("skxq", "skjc", "skzc", "jxdd", "raw_session")}
+        groups[key] = {
+          "kch": kch,
+          "kxh": kxh,
+          "kcm": str(item.get("kcm") or item.get("courseName") or ""),
+          "skjs": str(item.get("skjs") or item.get("attendClassTeacher") or "").strip(),
+          "sessions": [],
+          "meta": first_meta,
+        }
+      groups[key]["sessions"].append({
+        "skxq": str(item.get("skxq") or item.get("classDay") or ""),
+        "skjc": str(item.get("skjc") or item.get("section") or ""),
+        "skzc": str(item.get("skzc") or item.get("weekRange") or ""),
+        "jxdd": str(item.get("jxdd") or item.get("classroom") or item.get("classroomName") or ""),
+        "raw_session": item.get("raw_session"),
+      })
+    courses = list(groups.values())
+    return {"total_course_count": len(courses), "courses": courses}
+
+
 # ── 工具函数 ─────────────────────────────────────────────────────
 
 def _load(name: str):
@@ -111,7 +133,18 @@ def _load(name: str):
     if not p.exists():
         return None
     try:
-        return json.loads(p.read_text(encoding="utf-8"))
+        obj = json.loads(p.read_text(encoding="utf-8"))
+        # 如果是我们新格式：dict 包含 fetch_time
+        if isinstance(obj, dict) and 'fetch_time' in obj:
+            # 对于 GPA 和其他原始 dict 响应，返回去掉 fetch_time 的整个 dict
+            if name in ('gpa',):
+                return {k: v for k, v in obj.items() if k != 'fetch_time'}
+            # 对于有 'data' 字段的格式（schedule, scores），返回 data 内容
+            if 'data' in obj:
+                return obj['data']
+            # 其他情况返回去掉 fetch_time 的 dict
+            return {k: v for k, v in obj.items() if k != 'fetch_time'}
+        return obj
     except Exception:
         return None
 
@@ -241,17 +274,24 @@ def dashboard():
 @app.route("/api/schedule")
 @login_required
 def api_schedule():
-    """返回课程表数据（已按课序号+课程号去重的结构）。"""
-    data = _load("schedule")   # 格式: {total_course_count, courses:[{kch,kxh,kcm,skjs,sessions:[...]}]}
+    """返回课程表数据：平铺列表用于列表视图，去重结构用于网格视图。"""
+    flat_schedule = _load("schedule")  # 加载平铺的课程列表
+    if flat_schedule is None:
+        flat_schedule = []
+    
+    # 从平铺列表构建去重结构
+    dedup = build_schedule_dedup_from_list(flat_schedule if isinstance(flat_schedule, list) else [])
+    
     current_week = get_current_week()
-    max_week = _detect_max_week(data)
+    max_week = _detect_max_week(dedup)
 
     return jsonify({
         "ok": True,
         "current_week": current_week,
         "max_week": max_week,
         "semester_start": SEMESTER_START.strftime("%Y-%m-%d"),
-        "data": data or {"total_course_count": 0, "courses": []},
+        "data": dedup or {"total_course_count": 0, "courses": []},
+        "flat": flat_schedule if isinstance(flat_schedule, list) else [],
     })
 
 
@@ -303,7 +343,11 @@ def api_status():
     changes = _load_changes()
     non_initial_cnt = sum(1 for c in changes if not c.get("initial"))
 
-    schedule_cnt = (schedule or {}).get("total_course_count", 0)
+    # schedule 现在为平铺列表
+    if isinstance(schedule, list):
+        schedule_cnt = build_schedule_dedup_from_list(schedule).get("total_course_count", 0)
+    else:
+        schedule_cnt = 0
 
     # GPA 值提取（新版原始 JSON 格式：{"data":[[name, gpa, class_rank, time, grade_rank]]}）
     gpa_val = "-"
@@ -774,6 +818,7 @@ const S = {
   maxWeek: 1,
   semesterStart: null,
   schedView: 'grid',
+  showAllCourses: false,
   gpaRaw: null,
   scoresTerm: null,
   scoresAll: null,
@@ -956,8 +1001,22 @@ function openDetailModal(title, obj, preferred=[]) {
 function kvRow(key, val) {
   let displayVal = val;
   if (Array.isArray(val)) {
-    displayVal = val.map(v => esc(String(v ?? '-'))).join('<br>');
-    return `<div class="kv"><span class="kl">${esc(label(key))}</span><span class="kv2">${displayVal}</span></div>`;
+    if (!val.length) {
+      return `<div class="kv"><span class="kl">${esc(label(key))}</span><span class="kv2">-</span></div>`;
+    }
+    const blocks = val.map((item, idx) => {
+      const head = `<div style="font-size:.72rem;color:var(--muted);font-family:var(--mono);margin-bottom:6px">${esc(label(key))} #${idx + 1}</div>`;
+      if (item && typeof item === 'object') {
+        const inner = Object.entries(_flatten(item)).map(([k2, v2]) => {
+          const kk = k2.split('.').pop();
+          const vv = (v2 === null || v2 === undefined || String(v2).trim() === '') ? '-' : v2;
+          return `<div class="kv" style="margin:6px 0"><span class="kl">${esc(label(kk))}</span><span class="kv2">${esc(String(vv))}</span></div>`;
+        }).join('');
+        return `<div style="padding:10px 0;border-top:1px dashed rgba(0,0,0,.12);margin-top:10px">${head}${inner}</div>`;
+      }
+      return `<div style="padding:10px 0;border-top:1px dashed rgba(0,0,0,.12);margin-top:10px">${head}<div class="kv"><span class="kl">${esc(label(key))}</span><span class="kv2">${esc(String(item ?? '-'))}</span></div></div>`;
+    }).join('');
+    return `<div class="kv"><span class="kl">${esc(label(key))}</span><div class="kv2">${blocks}</div></div>`;
   }
   if (val && typeof val === 'object') displayVal = JSON.stringify(val, null, 2);
   return `<div class="kv"><span class="kl">${esc(label(key))}</span><span class="kv2">${esc(String(displayVal ?? '-'))}</span></div>`;
@@ -968,7 +1027,8 @@ function _flatten(obj, prefix='') {
   if (!obj || typeof obj !== 'object') return out;
   Object.entries(obj).forEach(([k, v]) => {
     const nk = prefix ? `${prefix}.${k}` : k;
-    if (v && typeof v === 'object' && !Array.isArray(v)) Object.assign(out, _flatten(v, nk));
+    if (Array.isArray(v)) out[nk] = v;
+    else if (v && typeof v === 'object') Object.assign(out, _flatten(v, nk));
     else out[nk] = v;
   });
   return out;
@@ -1065,6 +1125,7 @@ async function loadSchedule() {
   try {
     const d = await api('/api/schedule');
     S.scheduleData = d.data;
+    S.scheduleFlat = d.flat || [];
     S.currentWeek = d.current_week;
     S.viewWeek = d.current_week;
     S.semesterStart = d.semester_start;
@@ -1079,6 +1140,11 @@ function setSchedView(v, btn) {
   btn.classList.add('active');
   document.getElementById('schedule-grid').style.display = v === 'grid' ? '' : 'none';
   document.getElementById('schedule-list').style.display = v === 'list' ? '' : 'none';
+  if (S.scheduleData) renderSchedule();
+}
+
+function toggleShowAllCourses(checked) {
+  S.showAllCourses = !!checked;
   if (S.scheduleData) renderSchedule();
 }
 
@@ -1111,7 +1177,9 @@ function goCurrentWeek() {
 function renderSchedGrid() {
   const el = document.getElementById('schedule-grid');
   el.style.display = '';
-  const courses = (S.scheduleData?.courses || []).filter(c => isCourseInWeek(c, S.viewWeek));
+  const courses = S.showAllCourses
+    ? (S.scheduleData?.courses || [])
+    : (S.scheduleData?.courses || []).filter(c => isCourseInWeek(c, S.viewWeek));
   const nav = schedWeekNavHtml();
 
   if (!courses.length) { el.innerHTML = nav + emptyHtml('本周无课程'); return; }
@@ -1130,9 +1198,9 @@ function renderSchedGrid() {
     if (!colorMap[kcm]) colorMap[kcm] = COLORS[colorIdx++ % COLORS.length];
 
     // 找本周有课的所有 session
-    const activeSessions = (course.sessions || []).filter(s =>
-      extractWeeks(s.skzc || '').includes(S.viewWeek)
-    );
+    const activeSessions = S.showAllCourses
+      ? (course.sessions || [])
+      : (course.sessions || []).filter(s => extractWeeks(s.skzc || '').includes(S.viewWeek));
 
     activeSessions.forEach(s => {
       const xq = parseInt(s.skxq, 10);
@@ -1214,11 +1282,33 @@ function openCourseGridDetail(idx) {
 function renderSchedList() {
   const el = document.getElementById('schedule-list');
   el.style.display = '';
-  // 按文件中记录顺序，不排序
-  const courses = S.scheduleData?.courses || [];
+  const flat = S.scheduleFlat || [];
+  const courses = (S.showAllCourses ? flat : flat.filter(it => extractWeeks(it.skzc || '').includes(S.viewWeek))).map(it => ({
+    ...it,
+    sessions: [{
+      skxq: it.skxq || it.classDay || '',
+      skjc: it.skjc || it.section || '',
+      skzc: it.skzc || it.weekRange || '',
+      jxdd: it.jxdd || it.classroom || it.classroomName || ''
+    }],
+    raw_course: it.raw_course || it,
+    raw_session: it.raw_session || null,
+  }));
+  const toolbar = `<div class="list-toolbar" style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 16px;border-bottom:1px solid #ddd;background:#fafafa">
+    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:.72rem;color:var(--muted);font-family:var(--mono)">${S.showAllCourses ? '当前：全部课程' : `当前：第 ${S.viewWeek} 周`}</div>
+    <label style="display:flex;align-items:center;gap:6px;font-size:.76rem;color:var(--muted);cursor:pointer;white-space:nowrap;margin-left:auto">
+      <input id="show-all-courses" type="checkbox" onchange="toggleShowAllCourses(this.checked)">
+      显示全部课程
+    </label>
+  </div>`;
   const nav = schedWeekNavHtml();
 
-  if (!courses.length) { el.innerHTML = nav + emptyHtml('暂无课程数据'); return; }
+  if (!courses.length) {
+    el.innerHTML = toolbar + nav + emptyHtml('暂无课程数据');
+    const chk = document.getElementById('show-all-courses');
+    if (chk) chk.checked = !!S.showAllCourses;
+    return;
+  }
 
   const rowsHtml = courses.map((c, idx) => {
     const slotsHtml = (c.sessions || []).map(s => {
@@ -1239,9 +1329,9 @@ function renderSchedList() {
   }).join('');
 
   el._courses = courses;
-  el.innerHTML = nav +
+  el.innerHTML = toolbar + nav +
     `<div style="padding:12px 16px;background:#f5f5f5;border-bottom:1px solid #ddd;font-size:.85rem;color:#666">
-      全部课程 · 共 <strong>${S.scheduleData?.total_course_count || 0}</strong> 门（按课序号+课程号去重）
+      ${S.showAllCourses ? '全部课程' : `本周课程（第 ${S.viewWeek} 周）`} · 共 <strong>${courses.length}</strong> 条记录（展平列表）
     </div>
     <table>
       <thead><tr>
@@ -1250,54 +1340,61 @@ function renderSchedList() {
       </tr></thead>
       <tbody>${rowsHtml}</tbody>
     </table>`;
-}
-
-function openCourseListDetail(idx) {
-  const el = document.getElementById('schedule-list');
-  const c = (el._courses || [])[idx];
-  if (!c) return;
-  openCourseDetailFull(c);
-}
-
-function openCourseDetailFull(c) {
-  // 展示该门课所有可获取的信息
-  const slots = (c.sessions || []).map(s =>
-    `${formatDay(s.skxq)} ${formatSection(s.skjc)} | ${s.jxdd || '-'} | ${parseWeekRange(s.skzc)}`
-  );
-  const detailObj = {
-    课程名称: c.kcm || '-',
-    课程号: c.kch || '-',
-    课序号: c.kxh || '-',
-    任课教师: c.skjs || '-',
-    上课安排: slots,
-  };
-  // 合并原始字段（若有额外信息）
-  if (c._activeSession) {
-    const s = c._activeSession;
-    if (s.skzc) detailObj['当前周上课周次'] = parseWeekRange(s.skzc);
-    if (s.jxdd) detailObj['当前周教室'] = s.jxdd;
+  const chk = document.getElementById('show-all-courses');
+  if (chk) chk.checked = !!S.showAllCourses;
   }
-  openDetailModal('课程详情', detailObj, ['课程名称','课程号','课序号','任课教师','上课安排']);
-}
 
-// ══════════════════════════════════════════════════════════════════
-// 成绩
-// ══════════════════════════════════════════════════════════════════
-function scoreColor(s) {
-  const raw = String(s || '').trim();
-  if (['优秀','优'].includes(raw)) return 'score-exc';
-  if (['良好','良'].includes(raw)) return 'score-good';
-  if (['中等','中'].includes(raw)) return 'score-mid';
-  if (['及格','合格'].includes(raw)) return 'score-pass';
-  if (['不及格','不合格'].includes(raw)) return 'score-fail';
-  const n = parseFloat(raw);
-  if (isNaN(n)) return '';
-  if (n < 60) return 'score-fail';
-  if (n < 70) return 'score-pass';
-  if (n < 80) return 'score-mid';
-  if (n >= 90) return 'score-exc';
-  return 'score-good';
-}
+  function openCourseListDetail(idx) {
+    const el = document.getElementById('schedule-list');
+    const c = (el._courses || [])[idx];
+    if (!c) return;
+    openCourseDetailFull(c);
+  }
+
+  function openCourseDetailFull(c) {
+    const activeSession = c && c._activeSession ? c._activeSession : null;
+    const detailObj = {
+      ...(c && c.raw_course && typeof c.raw_course === 'object' ? c.raw_course : {}),
+      ...(c && c.meta && typeof c.meta === 'object' ? c.meta : {}),
+      ...(activeSession && activeSession.raw_session && typeof activeSession.raw_session === 'object' ? activeSession.raw_session : {}),
+      sessions: c.sessions || [],
+      raw_course: c.raw_course || null,
+      raw_session: activeSession ? (activeSession.raw_session || null) : null,
+    };
+    openDetailModal('课程详情', detailObj);
+  }
+
+  function openRawDetailModal(title, obj) {
+    const flat = _flatten(obj || {});
+    const rows = Object.entries(flat).map(([k, v]) => {
+      const val = (v === null || v === undefined || String(v).trim() === '') ? '-' : v;
+      return `<div class="kv"><span class="kl">${esc(k)}</span><span class="kv2">${esc(String(val))}</span></div>`;
+    }).join('');
+    document.getElementById('detail-modal-title').textContent = title;
+    document.getElementById('detail-modal-body').innerHTML =
+      (rows || '<div class="empty-text">暂无字段</div>') +
+      `<details class="raw-json"><summary>原始数据</summary><pre>${esc(JSON.stringify(obj || {}, null, 2))}</pre></details>`;
+    document.getElementById('detail-modal').classList.add('open');
+  }
+
+  // ══════════════════════════════════════════════════════════════════
+  // 成绩
+  // ══════════════════════════════════════════════════════════════════
+  function scoreColor(s) {
+    const raw = String(s || '').trim();
+    if (['优秀','优'].includes(raw)) return 'score-exc';
+    if (['良好','良'].includes(raw)) return 'score-good';
+    if (['中等','中'].includes(raw)) return 'score-mid';
+    if (['及格','合格'].includes(raw)) return 'score-pass';
+    if (['不及格','不合格'].includes(raw)) return 'score-fail';
+    const n = parseFloat(raw);
+    if (isNaN(n)) return '';
+    if (n < 60) return 'score-fail';
+    if (n < 70) return 'score-pass';
+    if (n < 80) return 'score-mid';
+    if (n >= 90) return 'score-exc';
+    return 'score-good';
+  }
 
 function getScoreDisplay(s) {
   /**
@@ -1657,8 +1754,41 @@ async function openHistoryItem(idx) {
     const d = await api(`/api/history${q}`);
     const payload = d.data;
     document.getElementById('detail-modal-title').textContent = `归档 · ${typeLabel(row.type)} · ${row.file}`;
-    document.getElementById('detail-modal-body').innerHTML =
-      `<pre style="max-height:60vh;overflow:auto;font-family:var(--mono);font-size:.7rem">${esc(JSON.stringify(payload||{}, null, 2))}</pre>`;
+    let bodyHtml = '';
+    if (row.type === 'this_term_scores' || row.type === 'all_scores') {
+      // 使用成绩表格渲染（复用 scoresTable）
+      const kind = row.type === 'this_term_scores' ? 'term' : 'all';
+      bodyHtml = `<div style="max-height:60vh;overflow:auto">${scoresTable(kind, payload || [], '')}</div>`;
+      bodyHtml += `<details class="raw-json"><summary>原始数据</summary><pre>${esc(JSON.stringify(payload||{}, null, 2))}</pre></details>`;
+    } else if (row.type === 'schedule') {
+      // payload 可能为平铺列表或去重结构
+      let list = [];
+      if (Array.isArray(payload)) list = payload;
+      else if (payload && Array.isArray(payload.data)) list = payload.data;
+      else if (payload && payload.courses) {
+        // 已是去重结构，展开为简表
+        const rows = payload.courses.map((c, i) => {
+          const slots = (c.sessions || []).map(s => `${formatDay(s.skxq)} ${formatSection(s.skjc)} | ${s.jxdd||'-'} | ${parseWeekRange(s.skzc)}`).join('\n');
+          return `<tr><td>${i+1}</td><td>${esc(c.kch||'-')}</td><td>${esc(c.kxh||'-')}</td><td>${esc(c.kcm||'-')}</td><td>${esc(c.skjs||'-')}</td><td><pre style="white-space:pre-wrap">${esc(slots)}</pre></td></tr>`;
+        }).join('');
+        bodyHtml = `<table><thead><tr><th>序号</th><th>课程号</th><th>课序号</th><th>课程名称</th><th>任课教师</th><th>上课安排</th></tr></thead><tbody>${rows}</tbody></table>`;
+        bodyHtml += `<details class="raw-json"><summary>原始数据</summary><pre>${esc(JSON.stringify(payload||{}, null, 2))}</pre></details>`;
+      }
+      if (list.length) {
+        const rows = list.map((it, i) => {
+          const slots = `${formatDay(it.skxq||it.classDay)} ${formatSection(it.skjc||it.section)} | ${it.jxdd||it.classroom||it.classroomName||'-'} | ${parseWeekRange(it.skzc||it.weekRange||'')}`;
+          return `<tr><td>${i+1}</td><td>${esc(it.kch||it.courseNumber||'-')}</td><td>${esc(it.kxh||it.coureSequenceNumber||'-')}</td><td>${esc(it.kcm||it.courseName||'-')}</td><td>${esc(it.skjs||it.attendClassTeacher||'-')}</td><td>${esc(slots)}</td></tr>`;
+        }).join('');
+        bodyHtml = `<table><thead><tr><th>序号</th><th>课程号</th><th>课序号</th><th>课程名称</th><th>任课教师</th><th>上课安排</th></tr></thead><tbody>${rows}</tbody></table>` + bodyHtml;
+        bodyHtml += `<details class="raw-json"><summary>原始数据</summary><pre>${esc(JSON.stringify(payload||{}, null, 2))}</pre></details>`;
+      }
+    } else if (row.type === 'gpa') {
+      bodyHtml = `<pre style="max-height:60vh;overflow:auto;font-family:var(--mono);font-size:.8rem">${esc(JSON.stringify(payload||{}, null, 2))}</pre>`;
+    } else {
+      bodyHtml = `<pre style="max-height:60vh;overflow:auto;font-family:var(--mono);font-size:.7rem">${esc(JSON.stringify(payload||{}, null, 2))}</pre>`;
+    }
+
+    document.getElementById('detail-modal-body').innerHTML = bodyHtml;
     document.getElementById('detail-modal').classList.add('open');
   } catch(e) {
     alert('读取归档失败');
