@@ -84,6 +84,7 @@ def label(key: str) -> str:
 import base64
 import re
 import random
+import pickle
 from bs4 import BeautifulSoup
 from Crypto.Cipher import AES
 from Crypto.Util.Padding import pad
@@ -331,17 +332,67 @@ def _login_direct(sess: requests.Session, username: str, password: str, base_url
     log.error("验证码识别连续失败")
     return False
 
+# ══════════════════════════════════════════════════════════════════
+# Cookie 持久化
+# ══════════════════════════════════════════════════════════════════
+
+def _cookie_path(data_dir: str) -> Path:
+    p = Path(data_dir)
+    p.mkdir(parents=True, exist_ok=True)
+    return p / "cookies.pkl"
+
+def save_cookies(sess: requests.Session, data_dir: str):
+    """将当前 Session 的 Cookie 保存到本地"""
+    try:
+        with open(_cookie_path(data_dir), "wb") as f:
+            pickle.dump(sess.cookies, f)
+        log.info("已保存当前会话 Cookie。")
+    except Exception as e:
+        log.warning(f"保存 Cookie 失败: {e}")
+
+def load_cookies(sess: requests.Session, data_dir: str) -> bool:
+    """尝试从本地加载 Cookie"""
+    path = _cookie_path(data_dir)
+    if path.exists():
+        try:
+            with open(path, "rb") as f:
+                sess.cookies.update(pickle.load(f))
+            return True
+        except Exception as e:
+            log.warning(f"读取 Cookie 失败: {e}")
+    return False
 
 def do_login(config: dict) -> requests.Session | None:
     """
-    根据配置执行完整登录，返回已认证的 Session，失败返回 None。
-    流程与 app.py sniper_main 完全一致。
+    带状态缓存的登录封装。优先使用本地 Cookie，失效则发起全新登录。
     """
     sess = requests.Session()
-    username = config["username"]
-    password = config["password"]
+    data_dir = config["data_dir"]
     use_webvpn = config.get("use_webvpn", False)
     base_url = config["webvpn_base"] if use_webvpn else config["base_url"]
+
+    # 尝试加载历史 Cookie
+    if load_cookies(sess, data_dir):
+        log.info("检测到历史 Cookie，探测其有效性...")
+        try:
+            # 探测教务系统首页，禁止重定向。如果返回 200 且未被拦截，说明 Cookie 仍存活
+            probe_url = f"{base_url}/student/courseSelect/thisSemesterCurriculum/index"
+            r = sess.get(probe_url, headers=UA_PC, allow_redirects=False, timeout=5)
+            
+            if r.status_code == 200 and "login" not in r.text.lower():
+                log.info("历史会话仍有效，成功跳过登录流程。")
+                return sess
+            else:
+                log.info(f"会话已过期 (HTTP {r.status_code})，准备重新登录。")
+        except Exception as e:
+            log.info(f"探测请求异常 ({e})，降级为重新登录。")
+            
+    # 清空可能残留的无效 Cookie
+    sess.cookies.clear()
+    
+    # ── 以下为原有的全新登录流程 ──
+    username = config["username"]
+    password = config["password"]
 
     if use_webvpn:
         log.info("通过 WebVPN 登录…")
@@ -357,6 +408,8 @@ def do_login(config: dict) -> requests.Session | None:
     for attempt in range(1, 6):
         try:
             if _login_direct(sess, username, password, base_url):
+                # 登录成功，保存新的 Cookie
+                save_cookies(sess, data_dir)
                 return sess
         except Exception as e:
             log.warning(f"教务登录异常({attempt}/5): {e}")
@@ -365,7 +418,6 @@ def do_login(config: dict) -> requests.Session | None:
 
     log.error("教务系统登录连续失败")
     return None
-
 
 # ══════════════════════════════════════════════════════════════════
 # 数据抓取（原样返回服务器 JSON，不做额外解析/兼容）
