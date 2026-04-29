@@ -52,6 +52,30 @@ log = logging.getLogger("neau_monitor")
 
 
 # ══════════════════════════════════════════════════════════════════
+# 字段标签加载（用于格式化输出）
+# ══════════════════════════════════════════════════════════════════
+def _load_field_labels() -> dict:
+    """加载 field_labels.json，如果不存在返回空字典"""
+    labels_file = Path(__file__).parent / "field_labels.json"
+    if labels_file.exists():
+        try:
+            with open(labels_file, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                # 排除特殊的 "说明" 键
+                return {k: v for k, v in data.items() if k != "说明"}
+        except Exception as e:
+            log.warning(f"加载 field_labels.json 失败: {e}，将使用原始字段名")
+            return {}
+    return {}
+
+_FIELD_LABELS = _load_field_labels()
+
+def label(key: str) -> str:
+    """获取字段的中文标签，如果不存在返回原始键名"""
+    return _FIELD_LABELS.get(key, key)
+
+
+# ══════════════════════════════════════════════════════════════════
 # 登录 —— 完全复用 app.py 中的函数
 # ══════════════════════════════════════════════════════════════════
 # app.py 中核心登录逻辑的精简复刻（保持与 app.py 完全一致的行为）
@@ -657,7 +681,8 @@ def build_schedule_dedup(raw_list: list[dict]) -> dict:
         key = f"{kxh}_{kch}"
         if key not in groups:
             # 复制一些通用字段，并保存 first_meta 以保留课程级别的其它原始字段
-            first_meta = {k: v for k, v in item.items() if k not in ("skxq", "skjc", "skzc", "jxdd", "raw_session")}
+            # 排除 raw_course 和 raw_session，它们包含完整的原始 API 数据，太冗长
+            first_meta = {k: v for k, v in item.items() if k not in ("skxq", "skjc", "skzc", "jxdd", "raw_session", "raw_course")}
             groups[key] = {
                 "kch": kch,
                 "kxh": kxh,
@@ -703,8 +728,57 @@ def diff_schedule_dedup(old: dict, new: dict) -> list[dict]:
         if key not in old_map:
             changes.append({"action": "added", "key": key, "course": deepcopy(nc)})
         elif not _deep_equal(old_map[key], nc):
+            oc = old_map[key]
+            # 捕获字段级别的变动
+            all_keys = set(oc.keys()) | set(nc.keys())
+            field_changes = {}
+            for fk in all_keys:
+                # 如果是 meta 字段，展开内部键逐一比较，避免把整个 meta 当成单一字段
+                if fk == "meta":
+                    om = oc.get("meta") or {}
+                    nm = nc.get("meta") or {}
+                    inner_keys = set(om.keys()) | set(nm.keys())
+                    for ik in inner_keys:
+                        ov, nv = om.get(ik), nm.get(ik)
+                        if str(ov) != str(nv):
+                            field_changes[ik] = {"before": ov, "after": nv}
+                    continue
+                # sessions 是一个课次列表，按索引逐项比较其内部字段
+                if fk == "sessions":
+                    osessions = oc.get("sessions") or []
+                    nsessions = nc.get("sessions") or []
+                    max_len = max(len(osessions), len(nsessions))
+                    for idx in range(max_len):
+                        os = osessions[idx] if idx < len(osessions) else None
+                        ns = nsessions[idx] if idx < len(nsessions) else None
+                        if os is None and ns is not None:
+                            for sk, sv in ns.items():
+                                if sk == "raw_session":
+                                    continue
+                                field_changes[f"session[{idx}].{sk}"] = {"before": None, "after": sv}
+                            continue
+                        if ns is None and os is not None:
+                            for sk, sv in os.items():
+                                if sk == "raw_session":
+                                    continue
+                                field_changes[f"session[{idx}].{sk}"] = {"before": sv, "after": None}
+                            continue
+                        if os is None or ns is None or _deep_equal(os, ns):
+                            continue
+                        session_keys = set(os.keys()) | set(ns.keys())
+                        for sk in session_keys:
+                            if sk == "raw_session":
+                                continue
+                            ov, nv = os.get(sk), ns.get(sk)
+                            if str(ov) != str(nv):
+                                field_changes[f"session[{idx}].{sk}"] = {"before": ov, "after": nv}
+                    continue
+                ov, nv = oc.get(fk), nc.get(fk)
+                if str(ov) != str(nv):
+                    field_changes[fk] = {"before": ov, "after": nv}
             changes.append({"action": "modified", "key": key,
-                            "before": deepcopy(old_map[key]), "after": deepcopy(nc)})
+                            "before": deepcopy(oc), "after": deepcopy(nc),
+                            "fields": field_changes})
     for key, oc in old_map.items():
         if key not in new_map:
             changes.append({"action": "removed", "key": key, "course": deepcopy(oc)})
@@ -758,6 +832,13 @@ def diff_gpa(old_raw, new_raw) -> list[dict]:
     比较 GPA 数据，忽略生成时间字段，返回变动列表。
     GPA 数据结构是原始 JSON，通过 JSON 序列化比较。
     """
+    def _core(obj):
+        if isinstance(obj, dict):
+            if isinstance(obj.get('data'), (list, dict)):
+                return obj.get('data')
+            return {k: v for k, v in obj.items() if k not in _GPA_IGNORE_KEYS and k not in {'status', 'msg'}}
+        return obj
+
     # 将 GPA 原始数据规范化为可对比结构（去掉生成时间）
     def _strip_time(obj):
         if isinstance(obj, dict):
@@ -766,8 +847,8 @@ def diff_gpa(old_raw, new_raw) -> list[dict]:
             return [_strip_time(x) for x in obj]
         return obj
 
-    old_cmp = _strip_time(deepcopy(old_raw)) if old_raw else None
-    new_cmp = _strip_time(deepcopy(new_raw)) if new_raw else None
+    old_cmp = _strip_time(deepcopy(_core(old_raw))) if old_raw else None
+    new_cmp = _strip_time(deepcopy(_core(new_raw))) if new_raw else None
 
     if _deep_equal(old_cmp, new_cmp):
         return []
@@ -824,56 +905,152 @@ def send_notify(config: dict, title: str, content: str):
 # ══════════════════════════════════════════════════════════════════
 
 def _fmt_schedule_changes(changes: list[dict]) -> str:
+    """
+    格式化课程表变动。格式：
+    [课程] "课程名" 新增/删除课程
+    [课程] "键" 变动 "课程名" 值1->值2
+    [课程] 多项变动 "课程名"
+    """
     lines = []
     for c in changes:
-        action = c["action"]
+        action = c.get("action")
         if action == "added":
-            course = c["course"]
-            lines.append(f"📗 **新增课程** {course.get('kcm','')} "
-                         f"（课程号: {course.get('kch','')} 课序号: {course.get('kxh','')}）")
+            course = c.get("course") or c.get("after") or {}
+            kcm = course.get("kcm") or ""
+            lines.append(f'[课程] "{kcm}" 新增课程')
         elif action == "removed":
-            course = c["course"]
-            lines.append(f"📕 **删除课程** {course.get('kcm','')}")
+            course = c.get("course") or c.get("before") or {}
+            kcm = course.get("kcm") or ""
+            lines.append(f'[课程] "{kcm}" 删除课程')
         elif action == "modified":
-            b, a = c["before"], c["after"]
-            lines.append(f"📙 **课程变动** {b.get('kcm','')}")
+            before = c.get("before") or {}
+            after = c.get("after") or {}
+            kcm = after.get("kcm") or before.get("kcm") or ""
+            # 优先使用 diff 函数生成的 fields（如果存在），否则回退到对比 before/after
+            fields = c.get("fields")
+            if not fields:
+                all_keys = set(before.keys()) | set(after.keys())
+                fields = {k: {"before": before.get(k), "after": after.get(k)}
+                          for k in all_keys if str(before.get(k)) != str(after.get(k))}
+
+            fkeys = list(fields.keys())
+            if len(fkeys) == 1:
+                fk = fkeys[0]
+                fv = fields[fk]
+                bv = fv.get("before", "")
+                av = fv.get("after", "")
+                lines.append(f'[课程] "{_fmt_schedule_field_label(fk)}" 变动 "{kcm}" {bv}->{av}')
+            elif len(fkeys) > 1:
+                # 列出所有字段的具体变动
+                for fk in sorted(fkeys):
+                    fv = fields[fk]
+                    bv = fv.get("before", "")
+                    av = fv.get("after", "")
+                    lines.append(f'[课程] "{_fmt_schedule_field_label(fk)}" 变动 "{kcm}" {bv}->{av}')
     return "\n".join(lines)
 
 
-def _fmt_score_changes(changes: list[dict], label: str) -> str:
+def _fmt_schedule_field_label(key: str) -> str:
+    """把课程变动里的字段名转换成更适合展示的中文。"""
+    if key.startswith("session[") and "." in key:
+        head, subkey = key.split(".", 1)
+        try:
+            idx = int(head[len("session["):-1]) + 1
+        except Exception:
+            idx = 1
+        sub_label = {
+            "skxq": "上课日",
+            "skjc": "上课节次",
+            "skzc": "上课周次",
+            "jxdd": "教室名称",
+        }.get(subkey, label(subkey))
+        return f"第{idx}个课时·{sub_label}"
+    if key == "jxdd":
+        return "教室名称"
+    return label(key)
+
+
+def _fmt_score_changes(changes: list[dict], tag: str = "成绩") -> str:
+    """
+    格式化成绩变动。格式：
+    [成绩] "课程名" 新增成绩 成绩值
+    [成绩] "课程名" 删除成绩
+    [成绩] "键" 变动 "课程名" 值1->值2
+    [成绩] 多项变动 "课程名"
+    """
     lines = []
     for c in changes:
-        action = c["action"]
+        action = c.get("action")
         if action == "added":
-            s = c["score"]
-            kcm = s.get("kcm") or s.get("courseName") or ""
-            cj = s.get("cj") or s.get("score") or s.get("grade") or ""
-            lines.append(f"🆕 **[{label}] 新成绩** {kcm} 成绩: {cj}")
-        elif action == "modified":
-            b, a = c["before"], c["after"]
-            kcm = (b.get("kcm") or b.get("courseName") or
-                   a.get("kcm") or a.get("courseName") or "")
-            field_cnt = len(c.get("fields", {}))
-            if field_cnt == 1:
-                fk, fv = next(iter(c["fields"].items()))
-                lines.append(f"✏️ **[{label}] 成绩变动** {kcm}: {fk} "
-                             f"{fv['before']} → {fv['after']}")
-            else:
-                lines.append(f"✏️ **[{label}] 多项变动** {kcm}（{field_cnt} 个字段）")
+            score = c.get("score") or c.get("after") or {}
+            kcm = score.get("kcm") or score.get("courseName") or ""
+            cj = score.get("cj") or score.get("score") or score.get("grade") or ""
+            lines.append(f'[{tag}] "{kcm}" 新增成绩 {cj}')
         elif action == "removed":
-            s = c["score"]
-            kcm = s.get("kcm") or s.get("courseName") or ""
-            lines.append(f"📕 **[{label}] 成绩移除** {kcm}")
+            score = c.get("score") or c.get("before") or {}
+            kcm = score.get("kcm") or score.get("courseName") or ""
+            lines.append(f'[{tag}] "{kcm}" 删除成绩')
+        elif action == "modified":
+            before = c.get("before") or {}
+            after = c.get("after") or {}
+            kcm = after.get("kcm") or after.get("courseName") or before.get("kcm") or before.get("courseName") or ""
+            
+            fields = c.get("fields") or {}
+            if len(fields) == 1:
+                fk, fv = next(iter(fields.items()))
+                bv = fv.get("before", "")
+                av = fv.get("after", "")
+                lines.append(f'[{tag}] "{label(fk)}" 变动 "{kcm}" {bv}->{av}')
+            elif len(fields) > 1:
+                # 列出所有字段的具体变动
+                for fk in sorted(fields.keys()):
+                    fv = fields[fk]
+                    bv = fv.get("before", "")
+                    av = fv.get("after", "")
+                    lines.append(f'[{tag}] "{label(fk)}" 变动 "{kcm}" {bv}->{av}')
     return "\n".join(lines)
 
 
 def _fmt_gpa_changes(changes: list[dict]) -> str:
+    """
+    格式化 GPA 变动。格式：
+    [GPA] "键" 变动 值1->值2
+    [GPA] 多项变动
+    """
     lines = []
     for c in changes:
-        if "key" in c:
-            lines.append(f"GPA [{c['key']}] 变动: {c['before']} → {c['after']}")
-        else:
-            lines.append(f"GPA 变动: {c.get('before','?')} → {c.get('after','?')}")
+        fields = c.get("fields") or {}
+        # 优先处理 fields 中明确的字段变动，且只关注含有 gpa / 绩点 的字段
+        if len(fields) == 1:
+            fk, fv = next(iter(fields.items()))
+            fk_lower = str(fk).lower()
+            if "gpa" in fk_lower or "绩点" in label(fk):
+                bv = fv.get("before", "")
+                av = fv.get("after", "")
+                lines.append(f'[GPA] "{label(fk)}" 变动 {bv}->{av}')
+        elif len(fields) > 1:
+            # 如果多项变动中包含 gpa 字段，则只推送该字段的变动
+            for fk, fv in fields.items():
+                fk_lower = str(fk).lower()
+                if "gpa" in fk_lower or "绩点" in label(fk):
+                    bv = fv.get("before", "")
+                    av = fv.get("after", "")
+                    lines.append(f'[GPA] "{label(fk)}" 变动 {bv}->{av}')
+                    break
+        elif "key" in c:
+            # 部分 diff 返回 key/before/after 的形式，尝试判断是否为 GPA 值
+            bv = c.get("before", "")
+            av = c.get("after", "")
+            # 简单判断为数字类型或含小数点的字符串
+            def _looks_like_number(x):
+                try:
+                    float(x)
+                    return True
+                except Exception:
+                    return False
+            if _looks_like_number(bv) or _looks_like_number(av):
+                k = c.get("key", "")
+                lines.append(f'[GPA] "{label(k)}" 变动 {bv}->{av}')
     return "\n".join(lines)
 
 
@@ -909,10 +1086,7 @@ def run_once(config: dict):
         dedup = build_schedule_dedup(flat_list)
         log.info(f"[课程表] 去重后 {dedup['total_course_count']} 门课")
 
-        # 保存展平后的课程记录到 schedule.json（包含所有原始字段和 fetch_time）
-        save_data(data_dir, "schedule", flat_list, fetch_time)
-
-        # 为变动比对准备：读取旧的平铺列表并构建去重结构进行比对
+        # 先读取旧的平铺列表并构建去重结构进行比对，再保存当前抓取结果
         old_sched_raw = load_data(data_dir, "schedule")
         old_sched = build_schedule_dedup(old_sched_raw if isinstance(old_sched_raw, list) else [])
 
@@ -931,17 +1105,21 @@ def run_once(config: dict):
         else:
             changes = diff_schedule_dedup(old_sched, dedup)
             if changes:
+                msg = _fmt_schedule_changes(changes)
                 entry = {
                     "time": fetch_time, "type": "schedule",
                     "changes": changes,
                     "changes_count": len(changes),
+                    "summary": msg,
                 }
                 record_change(data_dir, entry)
-                msg = _fmt_schedule_changes(changes)
-                notify_parts.append(f"## 课程表变动\n{msg}")
+                notify_parts.append(msg)
                 log.info(f"[课程表] {len(changes)} 条变动")
             else:
                 log.info("[课程表] 无变动")
+
+        # 保存展平后的课程记录到 schedule.json（包含所有原始字段和 fetch_time）
+        save_data(data_dir, "schedule", flat_list, fetch_time)
 
     # ── 2. 本学期成绩 ──────────────────────────────────────────────
     raw_term = fetch_this_term_scores(sess, base_url)
@@ -949,7 +1127,6 @@ def run_once(config: dict):
         flat_term = _flatten_this_term_scores(raw_term)
         log.info(f"[本学期成绩] {len(flat_term)} 条")
         old_term = load_data(data_dir, "this_term_scores")
-        save_data(data_dir, "this_term_scores", flat_term, fetch_time)
 
         if old_term is None:
             is_first_run_any = True
@@ -960,14 +1137,17 @@ def run_once(config: dict):
         else:
             changes = diff_scores(old_term if isinstance(old_term, list) else [], flat_term)
             if changes:
+                msg = _fmt_score_changes(changes, "成绩")
                 entry = {"time": fetch_time, "type": "this_term_scores",
-                         "changes": changes, "changes_count": len(changes)}
+                         "changes": changes, "changes_count": len(changes),
+                         "summary": msg}
                 record_change(data_dir, entry)
-                msg = _fmt_score_changes(changes, "本学期")
-                notify_parts.append(f"## 本学期成绩变动\n{msg}")
+                notify_parts.append(msg)
                 log.info(f"[本学期成绩] {len(changes)} 条变动")
             else:
                 log.info("[本学期成绩] 无变动")
+
+        save_data(data_dir, "this_term_scores", flat_term, fetch_time)
 
     # ── 3. 历史成绩 ────────────────────────────────────────────────
     raw_all = fetch_all_scores(sess, base_url)
@@ -975,7 +1155,6 @@ def run_once(config: dict):
         flat_all = _flatten_all_scores(raw_all)
         log.info(f"[历史成绩] {len(flat_all)} 条")
         old_all = load_data(data_dir, "all_scores")
-        save_data(data_dir, "all_scores", flat_all, fetch_time)
 
         if old_all is None:
             is_first_run_any = True
@@ -986,20 +1165,22 @@ def run_once(config: dict):
         else:
             changes = diff_scores(old_all if isinstance(old_all, list) else [], flat_all)
             if changes:
+                msg = _fmt_score_changes(changes, "成绩")
                 entry = {"time": fetch_time, "type": "all_scores",
-                         "changes": changes, "changes_count": len(changes)}
+                         "changes": changes, "changes_count": len(changes),
+                         "summary": msg}
                 record_change(data_dir, entry)
-                msg = _fmt_score_changes(changes, "历史")
-                notify_parts.append(f"## 历史成绩变动\n{msg}")
+                notify_parts.append(msg)
                 log.info(f"[历史成绩] {len(changes)} 条变动")
             else:
                 log.info("[历史成绩] 无变动")
+
+        save_data(data_dir, "all_scores", flat_all, fetch_time)
 
     # ── 4. GPA ────────────────────────────────────────────────────
     raw_gpa = fetch_gpa_overview(sess, base_url)
     if raw_gpa is not None:
         old_gpa = load_data(data_dir, "gpa")
-        save_data(data_dir, "gpa", raw_gpa, fetch_time)
 
         if old_gpa is None:
             is_first_run_any = True
@@ -1009,20 +1190,23 @@ def run_once(config: dict):
         else:
             gpa_changes = diff_gpa(old_gpa, raw_gpa)
             if gpa_changes:
-                entry = {"time": fetch_time, "type": "gpa",
-                         "changes": gpa_changes, "changes_count": len(gpa_changes)}
-                record_change(data_dir, entry)
                 msg = _fmt_gpa_changes(gpa_changes)
-                notify_parts.append(f"## GPA 变动\n{msg}")
+                entry = {"time": fetch_time, "type": "gpa",
+                         "changes": gpa_changes, "changes_count": len(gpa_changes),
+                         "summary": msg}
+                record_change(data_dir, entry)
+                notify_parts.append(msg)
                 log.info(f"[GPA] {len(gpa_changes)} 条变动")
             else:
                 log.info("[GPA] 无变动（或仅生成时间更新）")
+
+        save_data(data_dir, "gpa", raw_gpa, fetch_time)
 
     sess.close()
 
     # ── 推送 ─────────────────────────────────────────────────────
     if notify_parts:
-        send_notify(config, "📚 教务系统有新变动", "\n\n".join(notify_parts))
+        send_notify(config, "📚 教务系统有新变动", "\n".join(notify_parts))
     elif is_first_run_any:
         send_notify(config, "✅ 教务监控首次抓取成功",
                     "已完成首次数据抓取，后续变动将第一时间推送。")

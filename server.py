@@ -613,11 +613,18 @@ tr:hover td{background:rgba(0,0,0,.018)}
 .ck-inline input{accent-color:var(--accent2)}
 .history-table td,.history-table th{white-space:nowrap}
 /* 课程列表中的多时段 */
-.time-slots{display:flex;flex-direction:column;gap:2px}
-.time-slot{font-size:.75rem;font-family:var(--mono);white-space:nowrap}
-.time-slot-week{font-size:.68rem;color:var(--muted);font-family:var(--mono)}
-.slot-group{border-bottom:1px dashed var(--border-light);padding:2px 0}
+.time-slots{display:flex;flex-direction:column;gap:6px}
+.time-slot{font-size:.75rem;font-family:var(--mono);white-space:nowrap;line-height:1.35}
+.time-slot-week{font-size:.68rem;color:var(--muted);font-family:var(--mono);line-height:1.25}
+.slot-group{border-bottom:1px dashed var(--border-light);padding:6px 0}
 .slot-group:last-child{border-bottom:none}
+.schedule-list-table{table-layout:fixed;width:100%}
+.schedule-list-table th:nth-child(1),.schedule-list-table td:nth-child(1){width:56px}
+.schedule-list-table th:nth-child(2),.schedule-list-table td:nth-child(2){width:92px}
+.schedule-list-table th:nth-child(3),.schedule-list-table td:nth-child(3){width:92px}
+.schedule-list-table th:nth-child(4),.schedule-list-table td:nth-child(4){width:220px}
+.schedule-list-table th:nth-child(5),.schedule-list-table td:nth-child(5){width:120px}
+.schedule-list-table th:nth-child(6),.schedule-list-table td:nth-child(6){width:auto}
 @media(max-width:768px){
   :root{--sidebar:0px}
   .sidebar{position:fixed;left:-240px;top:0;bottom:0;width:240px;z-index:100;transition:left .25s}
@@ -844,6 +851,22 @@ async function loadFieldLabels() {
 
 function label(key) {
   return S.LABELS[key] || key;
+}
+
+function formatGpaValue(v) {
+  if (v === null || v === undefined) return '-';
+  if (Array.isArray(v)) {
+    const first = v.length ? v[0] : null;
+    if (Array.isArray(first)) return first.map(x => String(x ?? '-')).join(' / ');
+    if (first && typeof first === 'object') return JSON.stringify(first);
+    return v.map(x => String(x ?? '-')).join(' / ');
+  }
+  if (typeof v === 'object') {
+    if (Array.isArray(v.data)) return formatGpaValue(v.data);
+    if ('gpa' in v || '绩点' in v) return String(v.gpa ?? v['绩点'] ?? '-');
+    return JSON.stringify(v);
+  }
+  return String(v);
 }
 
 // ══════════════════════════════════════════════════════════════════
@@ -1333,7 +1356,7 @@ function renderSchedList() {
     `<div style="padding:12px 16px;background:#f5f5f5;border-bottom:1px solid #ddd;font-size:.85rem;color:#666">
       ${S.showAllCourses ? '全部课程' : `本周课程（第 ${S.viewWeek} 周）`} · 共 <strong>${courses.length}</strong> 条记录（展平列表）
     </div>
-    <table>
+    <table class="schedule-list-table">
       <thead><tr>
         <th>序号</th><th>课程号</th><th>课序号</th><th>课程名称</th><th>任课教师</th>
         <th>上课安排（时间 ｜ 地点 / 周次）</th>
@@ -1353,15 +1376,96 @@ function renderSchedList() {
 
   function openCourseDetailFull(c) {
     const activeSession = c && c._activeSession ? c._activeSession : null;
-    const detailObj = {
+    const baseInfo = _courseBaseInfo(c);
+    const sessionRows = _courseSessionRows(c, activeSession);
+    const baseHtml = _renderKvBlock(baseInfo, ['timeAndPlaceList', 'sessions', 'raw_course', 'raw_session', 'meta', '_activeSession']);
+    const sessionHtml = _renderSessionRows(sessionRows);
+    const rawObj = {
       ...(c && c.raw_course && typeof c.raw_course === 'object' ? c.raw_course : {}),
       ...(c && c.meta && typeof c.meta === 'object' ? c.meta : {}),
-      ...(activeSession && activeSession.raw_session && typeof activeSession.raw_session === 'object' ? activeSession.raw_session : {}),
-      sessions: c.sessions || [],
+      sessions: sessionRows,
       raw_course: c.raw_course || null,
       raw_session: activeSession ? (activeSession.raw_session || null) : null,
     };
-    openDetailModal('课程详情', detailObj);
+
+    document.getElementById('detail-modal-title').textContent = '课程详情';
+    document.getElementById('detail-modal-body').innerHTML = `
+      <div class="detail-section" style="margin-bottom:14px">
+        <div class="detail-section-title" style="font-size:.82rem;font-weight:700;margin-bottom:10px;color:var(--accent2)">基础信息</div>
+        ${baseHtml || '<div class="empty-text">暂无字段</div>'}
+      </div>
+      <div class="detail-section" style="margin-bottom:14px">
+        <div class="detail-section-title" style="font-size:.82rem;font-weight:700;margin-bottom:10px;color:var(--accent2)">时段信息</div>
+        ${sessionHtml || '<div class="empty-text">暂无时段信息</div>'}
+      </div>
+      <details class="raw-json"><summary>原始数据</summary><pre>${esc(JSON.stringify(rawObj, null, 2))}</pre></details>`;
+    document.getElementById('detail-modal').classList.add('open');
+  }
+
+  function _courseBaseInfo(c) {
+    const out = {};
+    const source = c && c.raw_course && typeof c.raw_course === 'object'
+      ? c.raw_course
+      : (c && typeof c === 'object' ? c : {});
+    Object.entries(source).forEach(([k, v]) => {
+      if (['timeAndPlaceList', 'sessions', 'raw_course', 'raw_session', 'meta', '_activeSession'].includes(k)) return;
+      out[k] = v;
+    });
+    if (c && c.meta && typeof c.meta === 'object') {
+      Object.entries(c.meta).forEach(([k, v]) => {
+        if (out[k] === undefined) out[k] = v;
+      });
+    }
+    return out;
+  }
+
+  function _courseSessionRows(c, activeSession) {
+    const course = c && c.raw_course && typeof c.raw_course === 'object' ? c.raw_course : {};
+    let sessions = [];
+    if (Array.isArray(course.timeAndPlaceList) && course.timeAndPlaceList.length) {
+      sessions = course.timeAndPlaceList;
+    } else if (Array.isArray(c && c.sessions) && c.sessions.length) {
+      sessions = c.sessions.map(s => (s && s.raw_session && typeof s.raw_session === 'object') ? s.raw_session : s);
+    } else if (activeSession && activeSession.raw_session && typeof activeSession.raw_session === 'object') {
+      sessions = [activeSession.raw_session];
+    } else if (c && c.raw_session) {
+      sessions = Array.isArray(c.raw_session) ? c.raw_session : [c.raw_session];
+    }
+    return sessions.filter(s => s && typeof s === 'object');
+  }
+
+  function _renderKvBlock(obj, excludeKeys=[]) {
+    const flat = _flatten(obj || {});
+    const rows = Object.entries(flat)
+      .filter(([k, v]) => !excludeKeys.includes(k.split('.')[0]) && v !== null && v !== undefined && String(v).trim() !== '')
+      .map(([k, v]) => {
+        const key = k.split('.').pop();
+        return `<div class="kv"><span class="kl">${esc(label(key))}</span><span class="kv2">${esc(String(v))}</span></div>`;
+      }).join('');
+    return rows;
+  }
+
+  function _renderSessionRows(rows) {
+    if (!rows || !rows.length) return '';
+    const keys = [];
+    rows.forEach(row => {
+      Object.keys(_flatten(row)).forEach(k => {
+        const short = k.split('.').pop();
+        if (!keys.includes(short)) keys.push(short);
+      });
+    });
+    const header = keys.map(k => `<th>${esc(label(k))}</th>`).join('');
+    const body = rows.map((row, idx) => {
+      const flat = _flatten(row);
+      const cols = keys.map(k => {
+        const foundKey = Object.keys(flat).find(fk => fk.split('.').pop() === k);
+        const val = foundKey ? flat[foundKey] : '';
+        const display = (val === null || val === undefined || String(val).trim() === '') ? '-' : val;
+        return `<td>${esc(String(display))}</td>`;
+      }).join('');
+      return `<tr><td style="font-family:var(--mono);color:var(--muted)">${idx + 1}</td>${cols}</tr>`;
+    }).join('');
+    return `<div style="overflow:auto"><table><thead><tr><th>序号</th>${header}</tr></thead><tbody>${body}</tbody></table></div>`;
   }
 
   function openRawDetailModal(title, obj) {
@@ -1533,67 +1637,12 @@ function tlItem(c, idx, allData) {
 }
 
 function buildLogLines(c) {
-  const lines = [];
-  const tag = { schedule:'课程', this_term_scores:'成绩', all_scores:'成绩', gpa:'GPA' }[c.type] || c.type;
-
-  (c.changes || []).forEach(ch => {
-    if (c.type === 'gpa') {
-      const k = ch.key !== undefined ? String(ch.key) : '';
-      const bef = String(ch.before ?? '-');
-      const aft = String(ch.after ?? '-');
-      lines.push(`[${tag}] <span class="tag">${esc(k)}</span> 变动 ${esc(bef)} <span class="arr">→</span> ${esc(aft)}`);
-    } else if (c.type === 'schedule') {
-      const course = ch.course || ch.after || {};
-      const name = course.kcm || '';
-      const key = ch.key || '';
-      if (ch.action === 'added') {
-        lines.push(`[${tag}] <span class="tag">${esc(key)}</span> 新增 "${esc(name)}"`);
-      } else if (ch.action === 'removed') {
-        lines.push(`[${tag}] <span class="tag">${esc(key)}</span> 删除 "${esc(name)}"`);
-      } else if (ch.action === 'modified') {
-        // 检查哪些字段变了，生成描述
-        const bfields = ch.before || {};
-        const afields = ch.after || {};
-        const allKeys = [...new Set([...Object.keys(bfields), ...Object.keys(afields)])].filter(k => k !== 'sessions');
-        const diffKeys = allKeys.filter(k => JSON.stringify(bfields[k]) !== JSON.stringify(afields[k]));
-        const bname = bfields.kcm || afields.kcm || '';
-        if (diffKeys.length === 1) {
-          const k = diffKeys[0];
-          lines.push(`[${tag}] 变动 "${esc(bname)}" ${esc(label(k))} ${esc(String(bfields[k]??'-'))} <span class="arr">→</span> ${esc(String(afields[k]??'-'))}`);
-        } else {
-          lines.push(`[${tag}] 多项变动 "${esc(bname)}"`);
-        }
-      }
-    } else {
-      // 成绩类
-      const name = (ch.score || ch.after || ch.before || {}).kcm ||
-                   (ch.score || ch.after || ch.before || {}).courseName || '';
-      const key = ch.key || '';
-      if (ch.action === 'added') {
-        const s = ch.score || {};
-        const cj = s.cj || s.score || s.grade || '';
-        lines.push(`[${tag}] <span class="tag">${esc(key)}</span> 新增 "${esc(name)}" ${esc(cj)}`);
-      } else if (ch.action === 'removed') {
-        lines.push(`[${tag}] <span class="tag">${esc(key)}</span> 删除 "${esc(name)}"`);
-      } else if (ch.action === 'modified') {
-        const fields = ch.fields || {};
-        const fkeys = Object.keys(fields);
-        if (fkeys.length === 1) {
-          const fk = fkeys[0];
-          const bef = String(fields[fk].before ?? '-');
-          const aft = String(fields[fk].after ?? '-');
-          lines.push(`[${tag}] <span class="tag">${esc(label(fk))}</span> 变动 "${esc(name)}" ${esc(bef)} <span class="arr">→</span> ${esc(aft)}`);
-        } else {
-          lines.push(`[${tag}] 多项变动 "${esc(name)}"`);
-        }
-      }
-    }
-  });
-
-  if (!lines.length) {
-    lines.push(`[${tag}] 数据变动（共 ${c.changes_count || 0} 条）`);
+  // 优先读取预生成的摘要
+  if (typeof c.summary === 'string' && c.summary.trim()) {
+    return c.summary.split(/\r?\n/).filter(Boolean).map(line => esc(line));
   }
-  return lines;
+  // 如果没有摘要，返回空列表
+  return [];
 }
 
 // 存储当前 changes 列表，供弹窗使用
@@ -1650,9 +1699,9 @@ function openChangeDetail(idx) {
       // GPA 逐项变动
       const k = String(ch.key ?? '');
       html += `<div class="kv"><span class="kl">${esc(k || label(k))}</span><span class="kv2">
-        <span style="color:var(--accent)">${esc(String(ch.before??'-'))}</span>
+        <span style="color:var(--accent)">${esc(formatGpaValue(ch.before))}</span>
         <span style="color:var(--muted)"> → </span>
-        <span style="color:var(--green)">${esc(String(ch.after??'-'))}</span>
+        <span style="color:var(--green)">${esc(formatGpaValue(ch.after))}</span>
       </span></div>`;
     }
   });
