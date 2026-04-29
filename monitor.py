@@ -827,11 +827,12 @@ def diff_scores(old_list: list, new_list: list) -> list[dict]:
 _GPA_IGNORE_KEYS = {"generated_at", "生成时间", "time"}
 
 
+
+
 def diff_gpa(old_raw, new_raw) -> list[dict]:
-    """
-    比较 GPA 数据，忽略生成时间字段，返回变动列表。
-    GPA 数据结构是原始 JSON，通过 JSON 序列化比较。
-    """
+    """GPA 对比，排除生成时间的影响"""
+    _GPA_IGNORE_KEYS = {"generated_at", "生成时间", "time"}
+    
     def _core(obj):
         if isinstance(obj, dict):
             if isinstance(obj.get('data'), (list, dict)):
@@ -839,7 +840,6 @@ def diff_gpa(old_raw, new_raw) -> list[dict]:
             return {k: v for k, v in obj.items() if k not in _GPA_IGNORE_KEYS and k not in {'status', 'msg'}}
         return obj
 
-    # 将 GPA 原始数据规范化为可对比结构（去掉生成时间）
     def _strip_time(obj):
         if isinstance(obj, dict):
             return {k: v for k, v in obj.items() if k not in _GPA_IGNORE_KEYS}
@@ -850,21 +850,18 @@ def diff_gpa(old_raw, new_raw) -> list[dict]:
     old_cmp = _strip_time(deepcopy(_core(old_raw))) if old_raw else None
     new_cmp = _strip_time(deepcopy(_core(new_raw))) if new_raw else None
 
-    if _deep_equal(old_cmp, new_cmp):
+    if json.dumps(old_cmp, sort_keys=True) == json.dumps(new_cmp, sort_keys=True):
         return []
 
-    # 尝试找具体变化的字段（仅支持 dict 结构的第一层解析）
     changes = []
     if isinstance(old_cmp, dict) and isinstance(new_cmp, dict):
-        all_keys = set(old_cmp.keys()) | set(new_cmp.keys())
-        for k in all_keys:
+        for k in set(old_cmp.keys()) | set(new_cmp.keys()):
             ov, nv = old_cmp.get(k), new_cmp.get(k)
             if str(ov) != str(nv):
                 changes.append({"key": k, "before": ov, "after": nv})
     elif isinstance(old_cmp, list) and isinstance(new_cmp, list):
-        # list 格式（如 [[名称, 值, 班排, 时间, 年排]]）逐元素对比
         for i, (o, n) in enumerate(zip(old_cmp, new_cmp)):
-            if not _deep_equal(o, n):
+            if json.dumps(o, sort_keys=True) != json.dumps(n, sort_keys=True):
                 changes.append({"index": i, "before": o, "after": n})
         if len(new_cmp) > len(old_cmp):
             for i in range(len(old_cmp), len(new_cmp)):
@@ -1012,46 +1009,26 @@ def _fmt_score_changes(changes: list[dict], tag: str = "成绩") -> str:
 
 
 def _fmt_gpa_changes(changes: list[dict]) -> str:
-    """
-    格式化 GPA 变动。格式：
-    [GPA] "键" 变动 值1->值2
-    [GPA] 多项变动
-    """
+    """格式化 GPA 变动，确保提取有效信息"""
     lines = []
     for c in changes:
+        # 兼容 fields 字典格式
         fields = c.get("fields") or {}
-        # 优先处理 fields 中明确的字段变动，且只关注含有 gpa / 绩点 的字段
-        if len(fields) == 1:
-            fk, fv = next(iter(fields.items()))
-            fk_lower = str(fk).lower()
-            if "gpa" in fk_lower or "绩点" in label(fk):
-                bv = fv.get("before", "")
-                av = fv.get("after", "")
-                lines.append(f'[GPA] "{label(fk)}" 变动 {bv}->{av}')
-        elif len(fields) > 1:
-            # 如果多项变动中包含 gpa 字段，则只推送该字段的变动
+        if fields:
             for fk, fv in fields.items():
-                fk_lower = str(fk).lower()
-                if "gpa" in fk_lower or "绩点" in label(fk):
-                    bv = fv.get("before", "")
-                    av = fv.get("after", "")
-                    lines.append(f'[GPA] "{label(fk)}" 变动 {bv}->{av}')
-                    break
+                if "gpa" in str(fk).lower() or "绩点" in label(fk):
+                    bv, av = fv.get("before", "-"), fv.get("after", "-")
+                    lines.append(f'[GPA] "{label(fk)}" 变动: {bv} -> {av}')
+        # 兼容 key/before/after 扁平格式
         elif "key" in c:
-            # 部分 diff 返回 key/before/after 的形式，尝试判断是否为 GPA 值
-            bv = c.get("before", "")
-            av = c.get("after", "")
-            # 简单判断为数字类型或含小数点的字符串
-            def _looks_like_number(x):
-                try:
-                    float(x)
-                    return True
-                except Exception:
-                    return False
-            if _looks_like_number(bv) or _looks_like_number(av):
-                k = c.get("key", "")
-                lines.append(f'[GPA] "{label(k)}" 变动 {bv}->{av}')
-    return "\n".join(lines)
+            k = c["key"]
+            if "gpa" in str(k).lower() or "绩点" in label(k):
+                bv, av = c.get("before", "-"), c.get("after", "-")
+                lines.append(f'[GPA] "{label(k)}" 变动: {bv} -> {av}')
+        elif "index" in c:
+            lines.append(f'[GPA] 数据项更新')
+            
+    return "\n".join(lines) if lines else "[GPA] 发生变动"
 
 
 # ══════════════════════════════════════════════════════════════════

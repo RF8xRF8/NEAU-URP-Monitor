@@ -58,7 +58,7 @@ def _load_field_labels() -> dict:
 FIELD_LABELS = _load_field_labels()
 
 app = Flask(__name__)
-app.secret_key = "neau_monitor_secret_2025"
+app.secret_key = os.environ.get("FLASK_SECRET_KEY", os.urandom(24).hex())
 app.permanent_session_lifetime = timedelta(hours=12)
 
 # ── 学期配置 ─────────────────────────────────────────────────────
@@ -244,14 +244,17 @@ def login_required(f):
 def login_page():
     error = ""
     if request.method == "POST":
-        u = request.form.get("username", "").strip()
-        p = request.form.get("password", "").strip()
+        import time # 确保顶部导入了 time
+        u, p = request.form.get("username", "").strip(), request.form.get("password", "").strip()
         if u == USERNAME and p == PASSWORD:
             session.permanent = True
             session["logged_in"] = True
             session["user"] = u
             return redirect(url_for("dashboard"))
-        error = "学号或密码错误"
+        
+        # 密码错误时，强制延迟 2 秒响应，防御暴力破解
+        time.sleep(2)
+        error = "Authentication Failed."
     return render_template_string(LOGIN_HTML, error=error)
 
 
@@ -384,19 +387,27 @@ def api_status():
 def api_history():
     data_type = request.args.get("type", "").strip()
     file_name = request.args.get("file", "").strip()
+    
     if file_name:
-        if not data_type:
-            return jsonify({"ok": False, "error": "缺少 type 参数"}), 400
-        if ".." in file_name or "/" in file_name or "\\" in file_name:
-            return jsonify({"ok": False, "error": "非法文件名"}), 400
-        target = Path(DATA_DIR) / "archive" / data_type / file_name
-        if not target.exists():
-            return jsonify({"ok": False, "error": "文件不存在"}), 404
-        try:
-            payload = json.loads(target.read_text(encoding="utf-8"))
-        except Exception:
-            payload = None
+        if not data_type: return jsonify({"ok": False, "error": "缺少 type 参数"}), 400
+        
+        # 严格防御：检查参数中是否包含非法路径字符
+        if any(char in data_type or char in file_name for char in ("..", "/", "\\")):
+            return jsonify({"ok": False, "error": "检测到非法路径访问"}), 403
+            
+        # 构建路径并强制解析为绝对路径
+        archive_dir = (Path(DATA_DIR) / "archive").resolve()
+        target = (archive_dir / data_type / file_name).resolve()
+        
+        # 安全校验：检查最终解析出的 target 是否仍然在 archive_dir 目录之下
+        if not str(target).startswith(str(archive_dir)):
+            return jsonify({"ok": False, "error": "越权访问被拒绝"}), 403
+
+        if not target.exists(): return jsonify({"ok": False, "error": "文件不存在"}), 404
+        try: payload = json.loads(target.read_text(encoding="utf-8"))
+        except Exception: payload = None
         return jsonify({"ok": True, "type": data_type, "file": file_name, "data": payload})
+        
     rows = _list_history(data_type)
     return jsonify({"ok": True, "data": rows, "count": len(rows)})
 
