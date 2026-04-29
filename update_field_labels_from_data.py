@@ -1,0 +1,204 @@
+import json
+from pathlib import Path
+
+DATA_DIR = Path('data')
+LABEL_FILE = Path('field_labels.json')
+
+BASE_MAP = {
+    'academicYearCode': '学年代码',
+    'after': '变更后',
+    'attendClassTeacher': '任课教师',
+    'before': '变更前',
+    'bm': '编码',
+    'campusName': '校区名称',
+    'changes': '变更列表',
+    'changes_count': '变更数量',
+    'cj': '成绩',
+    'cjlrfsdm': '成绩录入方式代码',
+    'classDay': '上课日',
+    'classNo': '班号',
+    'classSessions': '上课节次',
+    'classWeek': '上课周次',
+    'classroomName': '教室名称',
+    'continuingSession': '连续节次数',
+    'count': '数量',
+    'coureName': '课程名称',
+    'coureNumber': '课程号',
+    'coureSequenceNumber': '课序号',
+    'courseAttributeCode': '课程属性代码',
+    'courseAttributeName': '课程属性名称',
+    'courseCategoryCode': '课程类别代码',
+    'courseCategoryName': '课程类别名称',
+    'courseName': '课程名称',
+    'courseNumber': '课程号',
+    'coursePropertiesCode': '课程性质代码',
+    'coursePropertiesName': '课程性质名称',
+    'courseScore': '课程成绩',
+    'courseTeacher': '授课教师',
+    'credit': '学分',
+    'cycle': '周期',
+    'data': '数据',
+    'dgFlag': '代管标记',
+    'electiveTypeCode': '选修类型代码',
+    'englishCourseName': '英文课程名',
+    'entryStatusCode': '录入状态代码',
+    'examTime': '考试时间',
+    'examTypeCode': '考试方式代码',
+    'examTypeName': '考试方式名称',
+    'executiveEducationPlanNumber': '执行培养方案编号',
+    'fetch_time': '抓取时间',
+    'flag': '标记',
+    'gradeName': '成绩等级',
+    'gradePointScore': '绩点分',
+    'gradeScore': '等级分',
+    'id': '标识',
+    'initial': '首次抓取',
+    'jxdd': '上课地点',
+    'kch': '课程号',
+    'kch_zj': '主课程号',
+    'kcm': '课程名称',
+    'kxh': '课序号',
+    'makeupExaminationTypeCode': '补考类型代码',
+    'msg': '消息',
+    'notByReasonCode': '不通过原因代码',
+    'notByReasonName': '不通过原因',
+    'note': '备注',
+    'operatingTime': '操作时间',
+    'operator': '操作人',
+    'payableMoney': '应缴金额',
+    'percentileRankScore': '百分位排名分',
+    'pkbz': '排课标志',
+    'planNO': '方案编号',
+    'planName': '方案名称',
+    'planName2': '方案名称2',
+    'programPlanName': '培养方案名称',
+    'programPlanNumber': '培养方案编号',
+    'qqqh': '校区划分',
+    'raw_course': '原始课程',
+    'raw_session': '原始时段',
+    'remark': '说明',
+    'restrictedCondition': '限制条件',
+    'rlFlag': '容量标记',
+    'scoreEntryModeCode': '成绩录入方式',
+    'selectCourseStatusCode': '选课状态代码',
+    'selectCourseStatusName': '选课状态',
+    'sessions': '时段列表',
+    'sfyx': '是否有效',
+    'skjc': '上课节次',
+    'skjs': '任课教师',
+    'sksj': '上课时间',
+    'skxq': '上课星期',
+    'skzc': '上课周次',
+    'skzcs': '上课周次串',
+    'standardScore': '标准分',
+    'startTime': '开始时间',
+    'status': '状态',
+    'studentId': '学生ID',
+    'studentNumber': '学号',
+    'studyModeCode': '修读方式代码',
+    'studyModeName': '修读方式',
+    'substituteCourseNo': '替代课程号',
+    'tdkcm': '替代课程名',
+    'teachingBuildingName': '教学楼',
+    'termCode': '学期代码',
+    'termName': '学期名称',
+    'termTypeCode': '学期类型代码',
+    'termTypeName': '学期类型',
+    'time': '时间',
+    'timeAndPlaceList': '时段地点列表',
+    'tscore': '转换成绩',
+    'type': '类型',
+    'unit': '开课单位',
+    'wclyscj': '完成来源成绩',
+    'weekDescription': '周次说明',
+    'wxq': '微学期',
+    'xf': '学分',
+    'xkcsxdm': '选课参数项代码',
+    'xkcsxmc': '选课参数项名称',
+    'xkkzm': '选课课组码',
+    'ywdgFlag': '英文代管标记',
+    'zkxh': '组课序号',
+    'zscj': '折算成绩',
+    'gpa': 'GPA',
+    'class_rank': '班级排名',
+    'grade_rank': '年级排名',
+    'generated_at': '生成时间',
+    'meta': '课程元信息'
+}
+
+
+def walk(v, keys):
+    if isinstance(v, dict):
+        for k, val in v.items():
+            keys.add(k)
+            walk(val, keys)
+    elif isinstance(v, list):
+        for item in v:
+            walk(item, keys)
+
+
+def collect_keys():
+    keys = set()
+    for p in sorted(DATA_DIR.glob('**/*')):
+        if not p.is_file():
+            continue
+        if p.suffix.lower() == '.json':
+            try:
+                obj = json.loads(p.read_text(encoding='utf-8'))
+                walk(obj, keys)
+            except Exception:
+                pass
+        elif p.suffix.lower() == '.jsonl':
+            try:
+                for line in p.read_text(encoding='utf-8').splitlines():
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        obj = json.loads(line)
+                    except Exception:
+                        continue
+                    walk(obj, keys)
+            except Exception:
+                pass
+    return keys
+
+
+def main():
+    current = {}
+    if LABEL_FILE.exists():
+        try:
+            current = json.loads(LABEL_FILE.read_text(encoding='utf-8'))
+        except Exception:
+            current = {}
+
+    detected_keys = collect_keys()
+
+    merged = {}
+    merged['说明'] = '字段中文映射配置；由 data 目录自动汇总。未配置或不准确的字段可手动修改。'
+
+    # 先保留现有映射（不覆盖用户已改字段）
+    for k, v in current.items():
+        if k == '说明':
+            continue
+        merged[k] = v
+
+    # 再补充 data 中出现的键
+    for k in sorted(detected_keys):
+        if k not in merged:
+            merged[k] = BASE_MAP.get(k, k)
+
+    # 追加 base map 中但 data 可能暂未出现的常用键
+    for k, v in BASE_MAP.items():
+        if k not in merged:
+            merged[k] = v
+
+    LABEL_FILE.write_text(json.dumps(merged, ensure_ascii=False, indent=2), encoding='utf-8')
+
+    print('written', LABEL_FILE)
+    print('total mappings', len(merged) - 1)
+    print('detected keys', len(detected_keys))
+
+
+if __name__ == '__main__':
+    main()
