@@ -527,6 +527,67 @@ def _data_path(data_dir: str, name: str) -> Path:
     return p / f"{name}.json"
 
 
+def _payload_core(payload):
+    """提取用于比较的核心数据，忽略 fetch_time 这类包装字段。"""
+    if isinstance(payload, dict):
+        if 'data' in payload:
+            return payload['data']
+        return {k: v for k, v in payload.items() if k != 'fetch_time'}
+    return payload
+
+
+def _normalize_gpa_payload(obj):
+    """提取 GPA 比较用数据，并忽略生成时间字段。"""
+    if isinstance(obj, dict):
+        if isinstance(obj.get('data'), (list, dict)):
+            return _normalize_gpa_payload(obj.get('data'))
+        return {
+            k: _normalize_gpa_payload(v)
+            for k, v in obj.items()
+            if k not in {'fetch_time', 'generated_at', '生成时间', 'time', 'status', 'msg'}
+        }
+    if isinstance(obj, list):
+        normalized = []
+        for item in obj:
+            if isinstance(item, list) and len(item) >= 4:
+                row = list(item)
+                if len(row) >= 4:
+                    del row[3]
+                normalized.append(row)
+            else:
+                normalized.append(_normalize_gpa_payload(item))
+        return normalized
+    return obj
+
+
+def _gpa_rank_missing(raw_gpa) -> bool:
+    """判断 GPA 抓取结果是否处于排名空缺的重算窗口。"""
+    payload = raw_gpa
+    if isinstance(raw_gpa, dict) and isinstance(raw_gpa.get('data'), list) and raw_gpa.get('data'):
+        payload = raw_gpa['data']
+
+    def _blank(value) -> bool:
+        text = str(value).strip()
+        return text == "" or text == "-" or text.lower() == "none"
+
+    class_rank = None
+    grade_rank = None
+
+    if isinstance(payload, list) and payload:
+        first = payload[0]
+        if isinstance(first, list):
+            class_rank = first[2] if len(first) > 2 else None
+            grade_rank = first[4] if len(first) > 4 else None
+        elif isinstance(first, dict):
+            class_rank = first.get('class_rank') or first.get('班级排名')
+            grade_rank = first.get('grade_rank') or first.get('年级排名')
+    elif isinstance(payload, dict):
+        class_rank = payload.get('class_rank') or payload.get('班级排名')
+        grade_rank = payload.get('grade_rank') or payload.get('年级排名')
+
+    return _blank(class_rank) or _blank(grade_rank)
+
+
 def load_data(data_dir: str, name: str):
     """加载本地 JSON 文件，不存在返回 None。"""
     path = _data_path(data_dir, name)
@@ -572,7 +633,13 @@ def save_data(data_dir: str, name: str, payload, fetch_time: str):
             else:
                 old_core = old_obj
 
-            if old_core is None or json.dumps(old_core, ensure_ascii=False, sort_keys=True) != json.dumps(payload, ensure_ascii=False, sort_keys=True):
+            if name == "gpa":
+                old_core = _normalize_gpa_payload(old_core)
+                new_core = _normalize_gpa_payload(payload)
+            else:
+                new_core = _payload_core(payload)
+
+            if old_core is None or json.dumps(old_core, ensure_ascii=False, sort_keys=True) != json.dumps(new_core, ensure_ascii=False, sort_keys=True):
                 archive_dir = Path(data_dir) / "archive" / name
                 archive_dir.mkdir(parents=True, exist_ok=True)
                 ts = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
@@ -883,24 +950,8 @@ _GPA_IGNORE_KEYS = {"generated_at", "生成时间", "time"}
 
 def diff_gpa(old_raw, new_raw) -> list[dict]:
     """GPA 对比，排除生成时间的影响"""
-    _GPA_IGNORE_KEYS = {"generated_at", "生成时间", "time"}
-    
-    def _core(obj):
-        if isinstance(obj, dict):
-            if isinstance(obj.get('data'), (list, dict)):
-                return obj.get('data')
-            return {k: v for k, v in obj.items() if k not in _GPA_IGNORE_KEYS and k not in {'status', 'msg'}}
-        return obj
-
-    def _strip_time(obj):
-        if isinstance(obj, dict):
-            return {k: v for k, v in obj.items() if k not in _GPA_IGNORE_KEYS}
-        if isinstance(obj, list):
-            return [_strip_time(x) for x in obj]
-        return obj
-
-    old_cmp = _strip_time(deepcopy(_core(old_raw))) if old_raw else None
-    new_cmp = _strip_time(deepcopy(_core(new_raw))) if new_raw else None
+    old_cmp = _normalize_gpa_payload(deepcopy(old_raw)) if old_raw else None
+    new_cmp = _normalize_gpa_payload(deepcopy(new_raw)) if new_raw else None
 
     if json.dumps(old_cmp, sort_keys=True) == json.dumps(new_cmp, sort_keys=True):
         return []
@@ -1209,27 +1260,30 @@ def run_once(config: dict):
     # ── 4. GPA ────────────────────────────────────────────────────
     raw_gpa = fetch_gpa_overview(sess, base_url)
     if raw_gpa is not None:
-        old_gpa = load_data(data_dir, "gpa")
-
-        if old_gpa is None:
-            is_first_run_any = True
-            entry = {"time": fetch_time, "type": "gpa", "initial": True,
-                     "note": "首次抓取 GPA"}
-            record_change(data_dir, entry)
+        if _gpa_rank_missing(raw_gpa):
+            log.info("[GPA] 发现空排名，跳过本次记录")
         else:
-            gpa_changes = diff_gpa(old_gpa, raw_gpa)
-            if gpa_changes:
-                msg = _fmt_gpa_changes(gpa_changes)
-                entry = {"time": fetch_time, "type": "gpa",
-                         "changes": gpa_changes, "changes_count": len(gpa_changes),
-                         "summary": msg}
-                record_change(data_dir, entry)
-                notify_parts.append(msg)
-                log.info(f"[GPA] {len(gpa_changes)} 条变动")
-            else:
-                log.info("[GPA] 无变动（或仅生成时间更新）")
+            old_gpa = load_data(data_dir, "gpa")
 
-        save_data(data_dir, "gpa", raw_gpa, fetch_time)
+            if old_gpa is None:
+                is_first_run_any = True
+                entry = {"time": fetch_time, "type": "gpa", "initial": True,
+                         "note": "首次抓取 GPA"}
+                record_change(data_dir, entry)
+            else:
+                gpa_changes = diff_gpa(old_gpa, raw_gpa)
+                if gpa_changes:
+                    msg = _fmt_gpa_changes(gpa_changes)
+                    entry = {"time": fetch_time, "type": "gpa",
+                             "changes": gpa_changes, "changes_count": len(gpa_changes),
+                             "summary": msg}
+                    record_change(data_dir, entry)
+                    notify_parts.append(msg)
+                    log.info(f"[GPA] {len(gpa_changes)} 条变动")
+                else:
+                    log.info("[GPA] 无变动（或仅生成时间更新）")
+
+            save_data(data_dir, "gpa", raw_gpa, fetch_time)
 
     sess.close()
 
