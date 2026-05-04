@@ -59,7 +59,8 @@ FIELD_LABELS = _load_field_labels()
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("FLASK_SECRET_KEY", os.urandom(24).hex())
-app.permanent_session_lifetime = timedelta(hours=12)
+# 缩短会话有效期为 1 小时，超过需重新登录
+app.permanent_session_lifetime = timedelta(hours=1)
 
 # ── 学期配置 ─────────────────────────────────────────────────────
 SEMESTER_START = datetime(2026, 3, 2)   # 修改为实际的学期开始日期（周一）
@@ -486,6 +487,7 @@ MAIN_HTML = r"""<!DOCTYPE html>
 html,body{height:100%;background:var(--paper);font-family:var(--serif);color:var(--ink)}
 .layout{display:flex;height:100vh;overflow:hidden}
 .sidebar{width:var(--sidebar);flex-shrink:0;background:var(--ink);display:flex;flex-direction:column;overflow:hidden}
+.sidebar-mask{display:none}
 .logo{padding:28px 24px 20px;border-bottom:1px solid rgba(255,255,255,.08)}
 .logo-school{font-size:.6rem;letter-spacing:.18em;color:rgba(255,255,255,.4);font-family:var(--mono);margin-bottom:4px}
 .logo-name{font-size:1.05rem;color:#fff;font-weight:600;line-height:1.3}
@@ -502,6 +504,9 @@ html,body{height:100%;background:var(--paper);font-family:var(--serif);color:var
 .logout-btn:hover{color:#e07060}
 .main{flex:1;overflow-y:auto;display:flex;flex-direction:column}
 .topbar{padding:20px 32px;border-bottom:1px solid var(--border);background:var(--card);display:flex;align-items:center;justify-content:space-between;flex-shrink:0}
+.topbar-left{display:flex;align-items:flex-start;gap:12px}
+.topbar-actions{display:flex;align-items:center;gap:12px}
+.mobile-menu-btn{display:none;align-items:center;justify-content:center;width:34px;height:34px;border:1px solid var(--border);background:transparent;border-radius:2px;font-size:1rem;line-height:1;color:var(--ink);cursor:pointer;flex-shrink:0}
 .page-title{font-size:1.2rem;font-weight:700}
 .page-subtitle{font-size:.75rem;color:var(--muted);font-family:var(--mono);margin-top:2px}
 .status-pill{display:flex;align-items:center;gap:6px;font-size:.72rem;font-family:var(--mono);color:var(--muted);padding:6px 12px;background:var(--paper);border:1px solid var(--border);border-radius:20px}
@@ -625,7 +630,7 @@ tr:hover td{background:rgba(0,0,0,.018)}
 .history-table td,.history-table th{white-space:nowrap}
 /* 课程列表中的多时段 */
 .time-slots{display:flex;flex-direction:column;gap:6px}
-.time-slot{font-size:.75rem;font-family:var(--mono);white-space:nowrap;line-height:1.35}
+.time-slot{font-size:.75rem;font-family:var(--mono);white-space:normal;word-break:break-word;line-height:1.35}
 .time-slot-week{font-size:.68rem;color:var(--muted);font-family:var(--mono);line-height:1.25}
 .slot-group{border-bottom:1px dashed var(--border-light);padding:6px 0}
 .slot-group:last-child{border-bottom:none}
@@ -640,8 +645,39 @@ tr:hover td{background:rgba(0,0,0,.018)}
   :root{--sidebar:0px}
   .sidebar{position:fixed;left:-240px;top:0;bottom:0;width:240px;z-index:100;transition:left .25s}
   .sidebar.open{left:0}
+  .sidebar-mask{display:none;position:fixed;inset:0;background:rgba(15,17,23,.45);z-index:90}
+  .sidebar-mask.open{display:block}
+  .mobile-menu-btn{display:inline-flex}
+  .topbar{padding:12px 14px;gap:10px}
+  .topbar-left{align-items:center;gap:8px;min-width:0}
+  .topbar-actions{gap:8px}
+  .topbar-actions .status-pill{max-width:56vw;overflow:hidden}
+  .topbar-actions #status-text{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block}
+  .page-title{font-size:1rem;line-height:1.25}
+  .page-subtitle{display:none}
   .stats-row{grid-template-columns:repeat(2,1fr)}
-  .content{padding:16px}
+  .content{padding:12px}
+  .panel-head{padding:12px 12px}
+  th,td{padding:9px 10px}
+  .kb-header{padding:10px 12px;display:block}
+  .week-nav{margin-top:8px;flex-wrap:wrap}
+  .timeline{padding:12px}
+  .tl-item{gap:10px;margin-bottom:14px}
+  .modal-card{width:96vw;max-height:92vh}
+  .modal-head{padding:10px 12px}
+  .modal-body{padding:12px;font-size:.78rem}
+  .kv{display:block}
+  .kv .kl{display:block;margin-bottom:4px;white-space:normal}
+  #schedule-list .tbl-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
+  .schedule-list-table{table-layout:auto;min-width:760px}
+  .schedule-list-table th,.schedule-list-table td{white-space:normal}
+}
+@media(max-width:460px){
+  .stats-row{grid-template-columns:1fr}
+  .topbar-actions .status-pill{display:none}
+  .filter-row{width:100%}
+  .search-box{width:100%}
+  .week-nav-btn{padding:5px 8px;font-size:.68rem}
 }
 </style>
 </head>
@@ -670,13 +706,18 @@ tr:hover td{background:rgba(0,0,0,.018)}
   </div>
 </div>
 
+<div class="sidebar-mask" id="sidebar-mask" onclick="closeSidebar()"></div>
+
 <div class="main">
   <div class="topbar">
-    <div>
-      <div class="page-title" id="topbar-title">概览仪表盘</div>
-      <div class="page-subtitle" id="topbar-sub">教务系统数据概览</div>
+    <div class="topbar-left">
+      <button class="mobile-menu-btn" type="button" onclick="toggleSidebar()" aria-label="打开导航">☰</button>
+      <div>
+        <div class="page-title" id="topbar-title">概览仪表盘</div>
+        <div class="page-subtitle" id="topbar-sub">教务系统数据概览</div>
+      </div>
     </div>
-    <div style="display:flex;align-items:center;gap:12px">
+    <div class="topbar-actions">
       <div class="status-pill">
         <div class="status-dot ok" id="status-dot"></div>
         <span id="status-text" style="font-family:var(--mono);font-size:.72rem">加载中…</span>
@@ -892,11 +933,39 @@ const VIEW_META = {
   history:       {title:'历史数据归档',  sub:'抓取数据的历史归档快照'},
 };
 
+function isMobile() {
+  return window.matchMedia('(max-width: 768px)').matches;
+}
+
+function openSidebar() {
+  const sb = document.getElementById('sidebar');
+  const mask = document.getElementById('sidebar-mask');
+  if (!sb || !mask || !isMobile()) return;
+  sb.classList.add('open');
+  mask.classList.add('open');
+}
+
+function closeSidebar() {
+  const sb = document.getElementById('sidebar');
+  const mask = document.getElementById('sidebar-mask');
+  if (!sb || !mask) return;
+  sb.classList.remove('open');
+  mask.classList.remove('open');
+}
+
+function toggleSidebar() {
+  const sb = document.getElementById('sidebar');
+  if (!sb || !isMobile()) return;
+  if (sb.classList.contains('open')) closeSidebar();
+  else openSidebar();
+}
+
 function showView(id) {
   document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
   document.getElementById('view-'+id)?.classList.add('active');
   document.getElementById('nav-'+id)?.classList.add('active');
+  if (isMobile()) closeSidebar();
   const m = VIEW_META[id] || {};
   document.getElementById('topbar-title').textContent = m.title || id;
   document.getElementById('topbar-sub').textContent   = m.sub   || '';
@@ -1367,13 +1436,15 @@ function renderSchedList() {
     `<div style="padding:12px 16px;background:#f5f5f5;border-bottom:1px solid #ddd;font-size:.85rem;color:#666">
       ${S.showAllCourses ? '全部课程' : `本周课程（第 ${S.viewWeek} 周）`} · 共 <strong>${courses.length}</strong> 条记录（展平列表）
     </div>
-    <table class="schedule-list-table">
-      <thead><tr>
-        <th>序号</th><th>课程号</th><th>课序号</th><th>课程名称</th><th>任课教师</th>
-        <th>上课安排（时间 ｜ 地点 / 周次）</th>
-      </tr></thead>
-      <tbody>${rowsHtml}</tbody>
-    </table>`;
+    <div class="tbl-wrap">
+      <table class="schedule-list-table">
+        <thead><tr>
+          <th>序号</th><th>课程号</th><th>课序号</th><th>课程名称</th><th>任课教师</th>
+          <th>上课安排（时间 ｜ 地点 / 周次）</th>
+        </tr></thead>
+        <tbody>${rowsHtml}</tbody>
+      </table>
+    </div>`;
   const chk = document.getElementById('show-all-courses');
   if (chk) chk.checked = !!S.showAllCourses;
   }
@@ -1381,6 +1452,13 @@ function renderSchedList() {
   function openCourseListDetail(idx) {
     const el = document.getElementById('schedule-list');
     const c = (el._courses || [])[idx];
+    if (!c) return;
+    openCourseDetailFull(c);
+  }
+
+  // 打开历史归档中的课程详情（history modal 使用）
+  function openHistoryScheduleDetail(idx) {
+    const c = (S.historyModalCourses || [])[idx];
     if (!c) return;
     openCourseDetailFull(c);
   }
@@ -1816,30 +1894,74 @@ async function openHistoryItem(idx) {
     document.getElementById('detail-modal-title').textContent = `归档 · ${typeLabel(row.type)} · ${row.file}`;
     let bodyHtml = '';
     if (row.type === 'this_term_scores' || row.type === 'all_scores') {
-      // 使用成绩表格渲染（复用 scoresTable）
+      // 使用成绩表格渲染（复用 scoresTable）并确保点击行能打开详情
       const kind = row.type === 'this_term_scores' ? 'term' : 'all';
-      bodyHtml = `<div style="max-height:60vh;overflow:auto">${scoresTable(kind, payload || [], '')}</div>`;
+      // 规范 payload 为数组（支持 payload、payload.data、payload.scores 等格式）
+      let arr = [];
+      if (Array.isArray(payload)) arr = payload;
+      else if (payload && Array.isArray(payload.data)) arr = payload.data;
+      else if (payload && Array.isArray(payload.scores)) arr = payload.scores;
+      else if (payload && typeof payload === 'object') {
+        for (const k in payload) {
+          if (Array.isArray(payload[k])) { arr = payload[k]; break; }
+        }
+      }
+      S.historyScores = S.historyScores || {};
+      S.historyScores[kind] = arr || [];
+      S.renderedScores[kind] = arr || [];
+      bodyHtml = `<div style="max-height:60vh;overflow:auto">${scoresTable(kind, arr || [], '')}</div>`;
       bodyHtml += `<details class="raw-json"><summary>原始数据</summary><pre>${esc(JSON.stringify(payload||{}, null, 2))}</pre></details>`;
     } else if (row.type === 'schedule') {
-      // payload 可能为平铺列表或去重结构
-      let list = [];
-      if (Array.isArray(payload)) list = payload;
-      else if (payload && Array.isArray(payload.data)) list = payload.data;
-      else if (payload && payload.courses) {
-        // 已是去重结构，展开为简表
-        const rows = payload.courses.map((c, i) => {
-          const slots = (c.sessions || []).map(s => `${formatDay(s.skxq)} ${formatSection(s.skjc)} | ${s.jxdd||'-'} | ${parseWeekRange(s.skzc)}`).join('\n');
-          return `<tr><td>${i+1}</td><td>${esc(c.kch||'-')}</td><td>${esc(c.kxh||'-')}</td><td>${esc(c.kcm||'-')}</td><td>${esc(c.skjs||'-')}</td><td><pre style="white-space:pre-wrap">${esc(slots)}</pre></td></tr>`;
+      // payload 可能为平铺列表或去重结构，构建与“课程列表视图”一致的数据结构并支持点击查看详情
+      let courses = [];
+      if (Array.isArray(payload)) {
+        courses = payload.map(it => {
+          const raw = (it && it.raw_course) ? it.raw_course : it;
+          return Object.assign({}, it, {
+            sessions: [{
+              skxq: it.skxq || it.classDay || '',
+              skjc: it.skjc || it.section || '',
+              skzc: it.skzc || it.weekRange || '',
+              jxdd: it.jxdd || it.classroom || it.classroomName || ''
+            }],
+            raw_course: raw,
+            raw_session: it.raw_session || null,
+          });
+        });
+      } else if (payload && Array.isArray(payload.data)) {
+        courses = payload.data.map(it => {
+          const raw = (it && it.raw_course) ? it.raw_course : it;
+          return Object.assign({}, it, {
+            sessions: [{
+              skxq: it.skxq || it.classDay || '',
+              skjc: it.skjc || it.section || '',
+              skzc: it.skzc || it.weekRange || '',
+              jxdd: it.jxdd || it.classroom || it.classroomName || ''
+            }],
+            raw_course: raw,
+            raw_session: it.raw_session || null,
+          });
+        });
+      } else if (payload && payload.courses) {
+        courses = payload.courses.map(c => ({...c, raw_course: c}));
+      }
+
+      if (courses.length) {
+        // 规范字段，确保详情视图能读取到常用简称字段
+        const norm = courses.map(it => {
+          const raw = (it && it.raw_course) ? it.raw_course : it;
+          const kch = it.kch || raw.coureNumber || raw.coureNumber || it.courseNumber || (raw && raw.id && raw.id.coureNumber) || '';
+          const kxh = it.kxh || raw.coureSequenceNumber || it.coureSequenceNumber || '';
+          const kcm = it.kcm || raw.courseName || it.courseName || '';
+          const skjs = it.skjs || raw.attendClassTeacher || raw.courseTeacher || raw.teacherName || it.attendClassTeacher || '';
+          return Object.assign({}, it, {kch, kxh, kcm, skjs, raw_course: raw});
+        });
+        S.historyModalCourses = norm;
+        const rows = norm.map((it, i) => {
+          const slots = (it.sessions || []).map(s => `${formatDay(s.skxq||'')} ${formatSection(s.skjc||'')} | ${s.jxdd||'-'} | ${parseWeekRange(s.skzc||'')}`).join('\n');
+          return `<tr class="click-row" onclick="openHistoryScheduleDetail(${i})" title="点击查看课程详情"><td>${i+1}</td><td>${esc(it.kch||'-')}</td><td>${esc(it.kxh||'-')}</td><td>${esc(it.kcm||'-')}</td><td>${esc(it.skjs||'-')}</td><td><pre style="white-space:pre-wrap">${esc(slots)}</pre></td></tr>`;
         }).join('');
         bodyHtml = `<table><thead><tr><th>序号</th><th>课程号</th><th>课序号</th><th>课程名称</th><th>任课教师</th><th>上课安排</th></tr></thead><tbody>${rows}</tbody></table>`;
-        bodyHtml += `<details class="raw-json"><summary>原始数据</summary><pre>${esc(JSON.stringify(payload||{}, null, 2))}</pre></details>`;
-      }
-      if (list.length) {
-        const rows = list.map((it, i) => {
-          const slots = `${formatDay(it.skxq||it.classDay)} ${formatSection(it.skjc||it.section)} | ${it.jxdd||it.classroom||it.classroomName||'-'} | ${parseWeekRange(it.skzc||it.weekRange||'')}`;
-          return `<tr><td>${i+1}</td><td>${esc(it.kch||it.courseNumber||'-')}</td><td>${esc(it.kxh||it.coureSequenceNumber||'-')}</td><td>${esc(it.kcm||it.courseName||'-')}</td><td>${esc(it.skjs||it.attendClassTeacher||'-')}</td><td>${esc(slots)}</td></tr>`;
-        }).join('');
-        bodyHtml = `<table><thead><tr><th>序号</th><th>课程号</th><th>课序号</th><th>课程名称</th><th>任课教师</th><th>上课安排</th></tr></thead><tbody>${rows}</tbody></table>` + bodyHtml;
         bodyHtml += `<details class="raw-json"><summary>原始数据</summary><pre>${esc(JSON.stringify(payload||{}, null, 2))}</pre></details>`;
       }
     } else if (row.type === 'gpa') {
@@ -1875,6 +1997,12 @@ function errHtml() {
 // 初始化
 // ══════════════════════════════════════════════════════════════════
 (async () => {
+  window.addEventListener('resize', () => {
+    if (!isMobile()) closeSidebar();
+  });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') closeSidebar();
+  });
   await loadFieldLabels();
   await loadStatus();
   await loadOverview();
