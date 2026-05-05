@@ -1142,7 +1142,6 @@ async function loadStatus() {
     document.getElementById('st-sch').textContent = d.schedule_cnt ?? '—';
     document.getElementById('st-ts').textContent  = d.term_score_cnt ?? '—';
     document.getElementById('st-as').textContent  = d.all_score_cnt  ?? '—';
-    document.getElementById('st-ch').textContent  = d.changes_cnt    ?? '—';
     document.getElementById('st-gpa').textContent = d.gpa || '—';
     document.getElementById('status-text').textContent = `上次: ${d.last_run||'未知'} | 下次: ${d.next_run||'未知'}`;
     document.getElementById('status-dot').className = 'status-dot ok';
