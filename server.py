@@ -428,38 +428,80 @@ LOGIN_HTML = r"""<!DOCTYPE html>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>教务监控 · 登录</title>
-<link href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
-:root{--ink:#0f1117;--paper:#f5f0e8;--accent:#c8432b;--accent2:#2b5fc8;--border:#d4c9b0;--mono:'JetBrains Mono',monospace;--serif:'Noto Serif SC',serif}
-body{min-height:100vh;display:flex;align-items:center;justify-content:center;background:var(--paper);font-family:var(--serif)}
-.wrap{width:100%;max-width:400px;padding:24px}
-.card{background:#fff;border:1.5px solid var(--border);padding:44px 40px 40px;box-shadow:0 8px 32px rgba(15,17,23,.12);position:relative;overflow:hidden}
-.card::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;background:linear-gradient(90deg,var(--accent),var(--accent2))}
-.school{font-size:.7rem;letter-spacing:.15em;color:#888;font-family:var(--mono);margin-bottom:8px}
-h1{font-size:1.6rem;font-weight:700;color:var(--ink);line-height:1.2;margin-bottom:32px}
-h1 span{color:var(--accent)}
-label{display:block;font-size:.75rem;color:#666;font-family:var(--mono);margin-bottom:6px}
-input{width:100%;border:1.5px solid var(--border);padding:11px 14px;font-size:.95rem;font-family:var(--mono);color:var(--ink);background:#faf8f4;outline:none;transition:border-color .2s;margin-bottom:20px;border-radius:2px}
-input:focus{border-color:var(--accent2)}
-.btn{width:100%;padding:12px;background:var(--ink);color:#fff;border:none;font-family:var(--mono);font-size:.9rem;cursor:pointer;border-radius:2px;transition:background .2s}
-.btn:hover{background:var(--accent)}
-.err{background:#fff0ee;border:1px solid #f5b8b0;color:var(--accent);padding:10px 14px;font-size:.82rem;font-family:var(--mono);margin-bottom:20px;border-radius:2px}
-.foot{margin-top:28px;text-align:center;font-size:.72rem;color:#aaa;font-family:var(--mono)}
+:root{
+  --bg:#f1f5f4;--surface:#ffffff;
+  --ink:#111827;--muted:#6b7280;--subtle:#9ca3af;
+  --accent:#16a34a;--accent-hover:#15803d;--accent-light:#f0fdf4;--accent-border:#bbf7d0;
+  --red:#dc2626;--red-light:#fef2f2;--red-border:#fecaca;
+  --border:#e5e7eb;--border-focus:#16a34a;
+  --sans:'Plus Jakarta Sans',system-ui,sans-serif;--mono:'IBM Plex Mono',monospace;
+  --r:10px;
+}
+body{min-height:100vh;display:flex;align-items:center;justify-content:center;background:var(--bg);font-family:var(--sans)}
+.wrap{width:100%;max-width:420px;padding:24px}
+.brand{display:flex;align-items:center;gap:10px;margin-bottom:32px}
+.brand-icon{width:36px;height:36px;background:var(--accent);border-radius:8px;display:flex;align-items:center;justify-content:center}
+.brand-icon svg{width:20px;height:20px;fill:none;stroke:#fff;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.brand-text{font-size:15px;font-weight:600;color:var(--ink)}
+.brand-sub{font-size:12px;color:var(--muted);font-family:var(--mono);margin-top:1px}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:36px 32px;box-shadow:0 1px 3px rgba(0,0,0,.06),0 4px 16px rgba(0,0,0,.04)}
+.card-title{font-size:20px;font-weight:600;color:var(--ink);margin-bottom:6px}
+.card-sub{font-size:13px;color:var(--muted);margin-bottom:28px}
+.field{margin-bottom:18px}
+label{display:flex;align-items:center;gap:6px;font-size:12px;font-weight:500;color:var(--muted);margin-bottom:6px;font-family:var(--mono);letter-spacing:.03em;text-transform:uppercase}
+label svg{width:13px;height:13px;flex-shrink:0;opacity:.6}
+input{width:100%;border:1px solid var(--border);padding:10px 13px;font-size:14px;font-family:var(--mono);color:var(--ink);background:var(--surface);outline:none;transition:border-color .18s,background .18s;border-radius:8px}
+input:focus{border-color:var(--border-focus);background:#fff}
+.btn{width:100%;padding:11px;background:var(--accent);color:#fff;border:none;font-family:var(--sans);font-size:14px;font-weight:600;cursor:pointer;border-radius:8px;transition:background .18s;display:flex;align-items:center;justify-content:center;gap:8px;margin-top:8px}
+.btn:hover{background:var(--accent-hover)}
+.btn svg{width:15px;height:15px;fill:none;stroke:#fff;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
+.err{background:var(--red-light);border:1px solid var(--red-border);color:var(--red);padding:10px 13px;font-size:13px;font-family:var(--mono);margin-bottom:20px;border-radius:8px;display:flex;align-items:center;gap:8px}
+.err svg{width:15px;height:15px;flex-shrink:0;fill:none;stroke:var(--red);stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.foot{margin-top:20px;text-align:center;font-size:12px;color:var(--subtle);font-family:var(--mono)}
 </style>
 </head>
 <body>
 <div class="wrap">
+  <div class="brand">
+    <div class="brand-icon">
+      <svg viewBox="0 0 24 24"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
+    </div>
+    <div>
+      <div class="brand-text">NEAU 教务监控</div>
+      <div class="brand-sub">Academic Monitor</div>
+    </div>
+  </div>
   <div class="card">
-    <div class="school">Northeast Agricultural University</div>
-    <h1>教务<span>监控</span><br>数据中心</h1>
-    {% if error %}<div class="err">⚠ {{ error }}</div>{% endif %}
+    <div class="card-title">登录数据中心</div>
+    <div class="card-sub">使用您的学号与系统密码登录</div>
+    {% if error %}
+    <div class="err">
+      <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+      {{ error }}
+    </div>
+    {% endif %}
     <form method="post">
-      <label>学号</label>
-      <input name="username" placeholder="输入学号" autocomplete="username" autofocus>
-      <label>密码</label>
-      <input name="password" type="password" placeholder="输入密码" autocomplete="current-password">
-      <button class="btn" type="submit">进入系统 →</button>
+      <div class="field">
+        <label>
+          <svg viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+          学号
+        </label>
+        <input name="username" placeholder="输入学号" autocomplete="username" autofocus>
+      </div>
+      <div class="field">
+        <label>
+          <svg viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+          密码
+        </label>
+        <input name="password" type="password" placeholder="输入密码" autocomplete="current-password">
+      </div>
+      <button class="btn" type="submit">
+        进入系统
+        <svg viewBox="0 0 24 24"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+      </button>
     </form>
     <div class="foot">仅限本人使用 · 数据来自本地缓存</div>
   </div>
@@ -474,202 +516,227 @@ MAIN_HTML = r"""<!DOCTYPE html>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>教务监控 · 数据中心</title>
-<link href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@300;400;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 :root{
-  --ink:#0f1117;--paper:#f5f0e8;--card:#fff;
-  --accent:#c8432b;--accent2:#2b5fc8;--green:#1a7a4a;
-  --border:#ddd5bf;--border-light:#ede8de;
-  --muted:#888;--mono:'JetBrains Mono',monospace;--serif:'Noto Serif SC',serif;
-  --sidebar:240px;
+  --bg:#f3f4f6;--card:#ffffff;--surface:#f9fafb;
+  --ink:#111827;--muted:#6b7280;--subtle:#9ca3af;
+  --accent:#16a34a;--accent-hover:#15803d;--accent-light:#f0fdf4;--accent-border:#bbf7d0;
+  --accent2:#0f766e;
+  --green:#16a34a;--green-light:#f0fdf4;
+  --red:#dc2626;--red-light:#fef2f2;
+  --amber:#d97706;--amber-light:#fffbeb;
+  --border:#e5e7eb;--border-md:#d1d5db;
+  --sans:'Plus Jakarta Sans',system-ui,sans-serif;--mono:'IBM Plex Mono',monospace;
+  --sidebar:248px;
+  --r:8px;--r-lg:12px;
 }
-html,body{height:100%;background:var(--paper);font-family:var(--serif);color:var(--ink)}
+html,body{height:100%;background:var(--bg);font-family:var(--sans);color:var(--ink);font-size:15px}
+/* ── Layout ── */
 .layout{display:flex;height:100vh;overflow:hidden}
-.sidebar{width:var(--sidebar);flex-shrink:0;background:var(--ink);display:flex;flex-direction:column;overflow:hidden}
+/* ── Sidebar ── */
+.sidebar{width:var(--sidebar);flex-shrink:0;background:var(--card);border-right:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden}
 .sidebar-mask{display:none}
-.logo{padding:28px 24px 20px;border-bottom:1px solid rgba(255,255,255,.08)}
-.logo-school{font-size:.6rem;letter-spacing:.18em;color:rgba(255,255,255,.4);font-family:var(--mono);margin-bottom:4px}
-.logo-name{font-size:1.05rem;color:#fff;font-weight:600;line-height:1.3}
-.logo-name span{color:#e07060}
-.nav{flex:1;padding:16px 0;overflow-y:auto}
-.nav-section{padding:8px 20px 4px;font-size:.6rem;letter-spacing:.15em;color:rgba(255,255,255,.3);font-family:var(--mono)}
-.nav-item{display:flex;align-items:center;gap:10px;padding:10px 20px;color:rgba(255,255,255,.65);font-size:.82rem;cursor:pointer;transition:all .18s;border-left:2px solid transparent;font-family:var(--mono)}
-.nav-item:hover{background:rgba(255,255,255,.06);color:#fff}
-.nav-item.active{background:rgba(200,67,43,.15);color:#e07060;border-left-color:#e07060}
-.nav-item .icon{width:16px;text-align:center;opacity:.7;flex-shrink:0}
-.sidebar-foot{padding:16px 20px;border-top:1px solid rgba(255,255,255,.08)}
-.user-badge{font-size:.72rem;color:rgba(255,255,255,.4);font-family:var(--mono)}
-.logout-btn{display:block;margin-top:8px;font-size:.7rem;color:rgba(255,255,255,.3);font-family:var(--mono);cursor:pointer;text-decoration:none;transition:color .2s}
-.logout-btn:hover{color:#e07060}
-.main{flex:1;overflow-y:auto;display:flex;flex-direction:column}
-.topbar{padding:20px 32px;border-bottom:1px solid var(--border);background:var(--card);display:flex;align-items:center;justify-content:space-between;flex-shrink:0}
-.topbar-left{display:flex;align-items:flex-start;gap:12px}
-.topbar-actions{display:flex;align-items:center;gap:12px}
-.mobile-menu-btn{display:none;align-items:center;justify-content:center;width:34px;height:34px;border:1px solid var(--border);background:transparent;border-radius:2px;font-size:1rem;line-height:1;color:var(--ink);cursor:pointer;flex-shrink:0}
-.page-title{font-size:1.2rem;font-weight:700}
-.page-subtitle{font-size:.75rem;color:var(--muted);font-family:var(--mono);margin-top:2px}
-.status-pill{display:flex;align-items:center;gap:6px;font-size:.72rem;font-family:var(--mono);color:var(--muted);padding:6px 12px;background:var(--paper);border:1px solid var(--border);border-radius:20px}
-.status-dot{width:7px;height:7px;border-radius:50%;background:#aaa}
-.status-dot.ok{background:#1a7a4a;animation:pulse 2s infinite}
-@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
-.content{flex:1;padding:28px 32px}
-.stats-row{display:grid;grid-template-columns:repeat(5,1fr);gap:16px;margin-bottom:28px}
-.stat-card{background:var(--card);border:1.5px solid var(--border);padding:20px;position:relative;overflow:hidden}
+.logo{padding:20px 18px 16px;border-bottom:1px solid var(--border)}
+.logo-school{font-size:12px;letter-spacing:.1em;color:var(--subtle);font-family:var(--mono);margin-bottom:5px;text-transform:uppercase}
+.logo-name{font-size:15px;color:var(--ink);font-weight:600;line-height:1.3;display:flex;align-items:center;gap:8px}
+.logo-icon{width:28px;height:28px;background:var(--accent);border-radius:7px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.logo-icon svg{width:16px;height:16px;fill:none;stroke:#fff;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.nav{flex:1;padding:12px 10px;overflow-y:auto}
+.nav-section{padding:8px 10px 4px;font-size:12px;letter-spacing:.08em;color:var(--subtle);font-family:var(--mono);text-transform:uppercase;font-weight:500}
+.nav-item{display:flex;align-items:center;gap:9px;padding:9px 10px;color:var(--muted);font-size:14px;cursor:pointer;transition:all .15s;border-radius:var(--r);margin-bottom:1px;font-weight:500}
+.nav-item:hover{background:var(--surface);color:var(--ink)}
+.nav-item.active{background:var(--accent-light);color:var(--accent)}
+.nav-item .icon{width:18px;height:18px;display:flex;align-items:center;justify-content:center;flex-shrink:0;opacity:.7}
+.nav-item.active .icon{opacity:1}
+.nav-item svg{width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.sidebar-foot{padding:14px 18px;border-top:1px solid var(--border)}
+.user-badge{font-size:13px;color:var(--muted);font-family:var(--mono);display:flex;align-items:center;gap:6px}
+.user-badge svg{width:14px;height:14px;fill:none;stroke:var(--subtle);stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.logout-btn{display:flex;align-items:center;gap:5px;margin-top:8px;font-size:13px;color:var(--subtle);font-family:var(--mono);cursor:pointer;text-decoration:none;transition:color .15s}
+.logout-btn:hover{color:var(--red)}
+.logout-btn svg{width:13px;height:13px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+/* ── Main ── */
+.main{flex:1;overflow-y:auto;display:flex;flex-direction:column;min-width:0}
+.topbar{padding:14px 24px;border-bottom:1px solid var(--border);background:var(--card);display:flex;align-items:center;justify-content:space-between;flex-shrink:0;gap:12px}
+.topbar-left{display:flex;align-items:center;gap:12px;min-width:0}
+.topbar-actions{display:flex;align-items:center;gap:10px;flex-shrink:0}
+.mobile-menu-btn{display:none;align-items:center;justify-content:center;width:32px;height:32px;border:1px solid var(--border);background:transparent;border-radius:var(--r);color:var(--ink);cursor:pointer;flex-shrink:0}
+.mobile-menu-btn svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round}
+.page-title{font-size:16px;font-weight:600;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.page-subtitle{font-size:13px;color:var(--muted);font-family:var(--mono);margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.status-pill{display:flex;align-items:center;gap:6px;font-size:11px;font-family:var(--mono);color:var(--muted);padding:6px 12px;background:var(--surface);border:1px solid var(--border);border-radius:20px;white-space:nowrap}
+.status-dot{width:7px;height:7px;border-radius:50%;background:var(--subtle)}
+.status-dot.ok{background:var(--green);animation:pulse 2.5s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+.refresh-btn{display:flex;align-items:center;gap:5px;font-size:12px;font-family:var(--mono);padding:6px 12px;border:1px solid var(--border);background:var(--card);cursor:pointer;border-radius:var(--r);color:var(--muted);transition:all .15s;white-space:nowrap}
+.refresh-btn:hover{border-color:var(--border-md);color:var(--ink)}
+.refresh-btn svg{width:13px;height:13px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.content{flex:1;padding:24px}
+/* ── Stat cards ── */
+.stats-row{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:20px}
+.stat-card{background:var(--card);border:1px solid var(--border);border-radius:var(--r-lg);padding:18px 20px;transition:box-shadow .15s,border-color .15s}
 .stat-card.clickable{cursor:pointer}
-.stat-card.clickable:hover{transform:translateY(-2px);box-shadow:0 8px 18px rgba(15,17,23,.08)}
-.stat-card::after{content:'';position:absolute;bottom:0;left:0;right:0;height:2px;background:var(--accent)}
-.stat-card:nth-child(2)::after{background:var(--accent2)}
-.stat-card:nth-child(3)::after{background:var(--green)}
-.stat-card:nth-child(4)::after{background:#9b6b2b}
-.stat-card:nth-child(5)::after{background:#6b4fb3}
-.stat-label{font-size:.65rem;letter-spacing:.1em;color:var(--muted);font-family:var(--mono)}
-.stat-num{font-size:2rem;font-weight:700;font-family:var(--mono);line-height:1.2;margin-top:4px}
-.stat-sub{font-size:.7rem;color:var(--muted);font-family:var(--mono);margin-top:4px}
-.panel{background:var(--card);border:1.5px solid var(--border)}
-.panel-head{padding:16px 20px;border-bottom:1px solid var(--border-light);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px}
-.panel-title{font-size:.85rem;font-weight:600;display:flex;align-items:center;gap:8px}
-.panel-title .dot{width:8px;height:8px;border-radius:50%;background:var(--accent)}
-.filter-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
-.filter-btn{font-size:.7rem;font-family:var(--mono);padding:4px 12px;border:1px solid var(--border);background:transparent;cursor:pointer;color:var(--muted);transition:all .18s;border-radius:2px}
+.stat-card.clickable:hover{box-shadow:0 4px 16px rgba(0,0,0,.06);border-color:var(--border-md)}
+.stat-label{font-size:13px;color:var(--muted);font-weight:500;letter-spacing:.02em;display:flex;align-items:center;gap:5px;margin-bottom:8px}
+.stat-label svg{width:13px;height:13px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;opacity:.7}
+.stat-num{font-size:28px;font-weight:600;color:var(--ink);font-family:var(--mono);line-height:1;letter-spacing:-.02em}
+.stat-sub{font-size:11px;color:var(--subtle);font-family:var(--mono);margin-top:6px}
+/* ── Panel ── */
+.panel{background:var(--card);border:1px solid var(--border);border-radius:var(--r-lg);overflow:hidden;margin-bottom:16px}
+.panel-head{padding:14px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;background:var(--card)}
+.panel-title{font-size:14px;font-weight:600;color:var(--ink);display:flex;align-items:center;gap:7px}
+.panel-title svg{width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;color:var(--muted)}
+.panel-meta{font-size:13px;font-family:var(--mono);color:var(--subtle)}
+.filter-row{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.filter-btn{font-size:13px;font-family:var(--mono);padding:4px 11px;border:1px solid var(--border);background:transparent;cursor:pointer;color:var(--muted);transition:all .15s;border-radius:6px;font-weight:500}
 .filter-btn.active,.filter-btn:hover{background:var(--ink);color:#fff;border-color:var(--ink)}
-.search-box{font-size:.75rem;font-family:var(--mono);padding:5px 10px;border:1px solid var(--border);background:var(--paper);color:var(--ink);outline:none;width:180px;border-radius:2px}
-.search-box:focus{border-color:var(--accent2)}
+.search-box{font-size:13px;font-family:var(--mono);padding:6px 11px;border:1px solid var(--border);background:var(--surface);color:var(--ink);outline:none;width:200px;border-radius:var(--r);transition:border-color .15s}
+.search-box:focus{border-color:var(--accent)}
 .tbl-wrap{overflow-x:auto}
-table{width:100%;border-collapse:collapse;font-size:.8rem}
-thead tr{background:var(--paper)}
-th{padding:10px 16px;text-align:left;font-size:.65rem;letter-spacing:.1em;color:var(--muted);font-family:var(--mono);font-weight:500;border-bottom:1px solid var(--border);white-space:nowrap}
-td{padding:11px 16px;border-bottom:1px solid var(--border-light);vertical-align:middle}
+table{width:100%;border-collapse:collapse;font-size:14px}
+thead tr{background:var(--surface)}
+th{padding:10px 16px;text-align:left;font-size:13px;letter-spacing:.05em;color:var(--muted);font-family:var(--mono);font-weight:500;border-bottom:1px solid var(--border);white-space:nowrap}
+td{padding:11px 16px;border-bottom:1px solid var(--border);vertical-align:middle;color:var(--ink)}
 tr:last-child td{border-bottom:none}
-tr:hover td{background:rgba(0,0,0,.018)}
+tr:hover td{background:var(--surface)}
 .click-row{cursor:pointer}
-.click-row:hover td{background:rgba(43,95,200,.08)}
-.badge{display:inline-flex;align-items:center;padding:2px 8px;border-radius:2px;font-size:.65rem;font-family:var(--mono);font-weight:500}
-.badge-add{background:#e8f5ee;color:var(--green)}
-.badge-del{background:#fdf0ee;color:var(--accent)}
-.badge-chg{background:#eef3fd;color:var(--accent2)}
+.click-row:hover td{background:var(--accent-light)}
+/* ── Badges ── */
+.badge{display:inline-flex;align-items:center;padding:2px 7px;border-radius:5px;font-size:11px;font-family:var(--mono);font-weight:500}
+.badge-add{background:var(--green-light);color:var(--green)}
+.badge-del{background:var(--red-light);color:var(--red)}
+.badge-chg{background:var(--amber-light);color:var(--amber)}
+/* ── Score colors ── */
 .score-num{font-family:var(--mono);font-weight:600}
 .score-exc{color:var(--green)}
-.score-good{color:#2563eb}
-.score-mid{color:#b97a00}
-.score-pass{color:#cc5500}
-.score-fail{color:#dd001b}
-.hist-changed{background:rgba(208,36,36,.08);border-radius:3px;padding:1px 4px}
-/* 课表 */
-.kb-header{padding:16px 20px;background:#f5f5f5;border-bottom:2px solid var(--border);display:flex;align-items:center;justify-content:space-between;font-size:.9rem}
-.week-info{font-weight:600;color:var(--ink)}
-.week-nav{display:flex;align-items:center;gap:8px}
-.week-nav-btn{font-size:.72rem;font-family:var(--mono);padding:5px 10px;border:1px solid var(--border);background:#fff;cursor:pointer;border-radius:2px;color:var(--ink)}
-.week-nav-btn:hover{background:var(--ink);color:#fff}
+.score-good{color:#78b1ff}
+.score-mid{color:var(--amber)}
+.score-pass{color:#ff7575}
+.score-fail{color:var(--red)}
+.hist-changed{background:var(--red-light);border-radius:4px;padding:1px 4px}
+/* ── Schedule grid ── */
+.kb-header{padding:14px 18px;background:var(--surface);border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;gap:12px;font-size:13px}
+.week-info{font-weight:600;color:var(--ink);display:flex;align-items:center;gap:6px}
+.week-info svg{width:14px;height:14px;fill:none;stroke:var(--muted);stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.week-nav{display:flex;align-items:center;gap:6px}
+.week-nav-btn{font-size:13px;font-family:var(--mono);padding:5px 12px;border:1px solid var(--border);background:var(--card);cursor:pointer;border-radius:var(--r);color:var(--muted);transition:all .15s;font-weight:500}
+.week-nav-btn:hover{background:var(--ink);color:#fff;border-color:var(--ink)}
 .week-nav-btn:disabled{opacity:.35;cursor:default}
-.kb-wrap{overflow-x:auto;padding:4px}
-.kb{width:100%;border-collapse:collapse;background:#fff;table-layout:fixed}
-.kb thead{background:#fafafa}
-.kb th{padding:8px 6px;border:1px solid var(--border);text-align:center;font-size:.75rem;white-space:nowrap}
-.kb th:not(.time-col){width:calc((100% - 45px) / 7)}
-.kb th.time-col{background:#f5f5f5;width:45px}
-.date-small{display:block;font-size:.65rem;color:var(--muted);font-weight:400;margin-top:2px}
-.kb td{padding:6px;border:1px solid var(--border);text-align:center;height:65px;vertical-align:top;overflow:hidden}
-.kb td.hdr{background:#f5f5f5;font-weight:600;color:var(--ink);width:45px;padding:8px 0;font-size:.75rem}
-.kb td.empty{background:#fafafa}
-.kb td.course-container{padding:2px}
-.kb tr.slot-gap td{border-top:8px solid var(--card)}
-.course-cell{background:linear-gradient(135deg,#eef3fd,#e6eeff);border-left:3px solid var(--accent2);padding:5px 7px;height:100%;font-size:.7rem;line-height:1.4;border-radius:2px;cursor:pointer}
-.course-cell.c2{background:linear-gradient(135deg,#e8f5ee,#dff2e8);border-left-color:var(--green)}
-.course-cell.c3{background:linear-gradient(135deg,#fdf5e8,#faeedd);border-left-color:#c8902b}
-.course-cell.c4{background:linear-gradient(135deg,#fdf0ee,#fae6e3);border-left-color:var(--accent)}
-.course-cell.c5{background:linear-gradient(135deg,#f5e8fd,#eeddf5);border-left-color:#8b2bc8}
-.cc-name{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.cc-sub{color:var(--muted);font-size:.62rem;font-family:var(--mono);margin-top:1px}
-/* 变动时间线 */
-.timeline{padding:20px}
-.tl-item{display:flex;gap:16px;margin-bottom:20px;cursor:pointer}
-.tl-item:hover .tl-card{border-color:var(--accent2)}
+.kb-wrap{overflow-x:auto;padding:0}
+.kb{width:100%;border-collapse:collapse;background:var(--card);table-layout:fixed}
+.kb thead{background:var(--surface)}
+.kb th{padding:9px 6px;border:1px solid var(--border);text-align:center;font-size:13px;font-family:var(--mono);color:var(--muted);font-weight:500;white-space:nowrap}
+.kb th:not(.time-col){width:calc((100% - 44px) / 7)}
+.kb th.time-col{background:var(--surface);width:44px}
+.date-small{display:block;font-size:12px;color:var(--subtle);font-weight:400;margin-top:1px}
+.kb td{padding:4px;border:1px solid var(--border);text-align:center;height:72px;vertical-align:top;overflow:hidden}
+.kb td.hdr{background:var(--surface);font-weight:600;color:var(--muted);width:44px;padding:6px 0;font-size:13px;font-family:var(--mono)}
+.kb td.empty{background:var(--surface)}
+.kb td.course-container{padding:3px}
+.kb tr.slot-gap td{border-top:6px solid var(--bg)}
+.course-cell{background:var(--green-light);border-left:2.5px solid var(--accent);padding:5px 7px;height:100%;font-size:11px;line-height:1.35;border-radius:5px;cursor:pointer;transition:filter .15s;overflow:hidden}
+.course-cell:hover{filter:brightness(.95)}
+.course-cell.c2{background:#f0f9ff;border-left-color:#0284c7}
+.course-cell.c3{background:#fffbeb;border-left-color:var(--amber)}
+.course-cell.c4{background:#fdf2f8;border-left-color:#db2777}
+.course-cell.c5{background:#faf5ff;border-left-color:#9333ea}
+.cc-name{font-weight:600;overflow:hidden;color:var(--ink);font-size:13px;word-break:break-all;white-space:normal;line-height:1.3}
+.cc-sub{color:var(--muted);font-size:12px;font-family:var(--mono);margin-top:1px}
+/* ── Timeline ── */
+.timeline{padding:16px 20px}
+.tl-item{display:flex;gap:14px;margin-bottom:18px;cursor:pointer}
+.tl-item:hover .tl-card{border-color:var(--accent);background:var(--accent-light)}
 .tl-line{display:flex;flex-direction:column;align-items:center;flex-shrink:0}
-.tl-dot{width:10px;height:10px;border-radius:50%;background:var(--accent);border:2px solid var(--card);box-shadow:0 0 0 2px var(--accent);flex-shrink:0;margin-top:3px}
-.tl-dot.score{background:var(--accent2);box-shadow:0 0 0 2px var(--accent2)}
-.tl-dot.sch{background:#9b6b2b;box-shadow:0 0 0 2px #9b6b2b}
-.tl-dot.gpa{background:#6b4fb3;box-shadow:0 0 0 2px #6b4fb3}
+.tl-dot{width:9px;height:9px;border-radius:50%;background:var(--subtle);border:2px solid var(--card);box-shadow:0 0 0 2px var(--subtle);flex-shrink:0;margin-top:4px}
+.tl-dot.score{background:var(--accent);box-shadow:0 0 0 2px var(--accent)}
+.tl-dot.sch{background:var(--amber);box-shadow:0 0 0 2px var(--amber)}
+.tl-dot.gpa{background:var(--accent2);box-shadow:0 0 0 2px var(--accent2)}
 .tl-vline{width:1px;background:var(--border);flex:1;margin-top:4px}
-.tl-body{flex:1}
-.tl-time{font-size:.65rem;font-family:var(--mono);color:var(--muted);margin-bottom:6px}
-.tl-card{background:var(--paper);border:1px solid var(--border);padding:10px 14px;border-radius:2px;transition:border-color .15s}
-.tl-log{font-size:.78rem;line-height:1.7;font-family:var(--mono)}
+.tl-body{flex:1;min-width:0}
+.tl-time{font-size:13px;font-family:var(--mono);color:var(--subtle);margin-bottom:5px}
+.tl-card{background:var(--surface);border:1px solid var(--border);padding:10px 14px;border-radius:var(--r);transition:border-color .15s,background .15s}
+.tl-log{font-size:13px;line-height:1.7;font-family:var(--mono);color:var(--ink)}
 .tl-log .tag{font-weight:600;color:var(--accent2)}
-.tl-log .arr{color:var(--muted)}
-/* 弹窗 */
-.modal-mask{position:fixed;inset:0;background:rgba(15,17,23,.48);display:none;align-items:center;justify-content:center;z-index:999}
+.tl-log .arr{color:var(--subtle)}
+/* ── Modals ── */
+.modal-mask{position:fixed;inset:0;background:rgba(17,24,39,.4);display:none;align-items:center;justify-content:center;z-index:999;backdrop-filter:blur(2px)}
 .modal-mask.open{display:flex}
-.modal-card{width:min(92vw,700px);max-height:min(88vh,900px);background:#fff;border:1.5px solid var(--border);box-shadow:0 8px 40px rgba(0,0,0,.18);display:flex;flex-direction:column}
-.modal-head{padding:14px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between}
-.modal-title{font-size:.9rem;font-weight:700}
-.modal-close{border:1px solid var(--border);background:transparent;padding:2px 8px;cursor:pointer;font-family:var(--mono)}
-.modal-body{padding:16px 18px;font-size:.82rem;line-height:1.8;overflow:auto}
-.kv{display:flex;justify-content:space-between;gap:16px;border-bottom:1px dashed var(--border-light);padding:6px 0}
+.modal-card{width:min(92vw,680px);max-height:min(88vh,860px);background:var(--card);border:1px solid var(--border);border-radius:16px;box-shadow:0 20px 60px rgba(0,0,0,.15);display:flex;flex-direction:column;overflow:hidden}
+.modal-head{padding:16px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;background:var(--surface)}
+.modal-title{font-size:14px;font-weight:600;color:var(--ink);display:flex;align-items:center;gap:7px}
+.modal-title svg{width:15px;height:15px;fill:none;stroke:var(--muted);stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.modal-close{border:1px solid var(--border);background:transparent;padding:4px 10px;cursor:pointer;font-family:var(--mono);font-size:12px;border-radius:6px;color:var(--muted);transition:all .15s}
+.modal-close:hover{background:var(--red-light);border-color:var(--red);color:var(--red)}
+.modal-body{padding:18px 20px;font-size:14px;line-height:1.8;overflow:auto}
+.kv{display:flex;justify-content:space-between;gap:16px;border-bottom:1px solid var(--border);padding:7px 0}
 .kv:last-child{border-bottom:none}
-.kv .kl{flex:0 0 180px;white-space:nowrap;color:var(--muted);font-family:var(--mono);font-size:.75rem}
-.kv .kv2{flex:1;word-break:break-word}
-.raw-json{margin-top:12px;background:#f7f4ed;border:1px solid var(--border-light);padding:10px}
-.raw-json summary{cursor:pointer;font-family:var(--mono);font-size:.72rem;color:var(--muted);margin-bottom:8px}
-.raw-json pre{margin:0;white-space:pre;font-family:var(--mono);font-size:.68rem;line-height:1.5;max-height:300px;overflow:auto}
-/* 通用 */
-.empty{text-align:center;padding:60px 20px;color:var(--muted)}
-.empty-icon{font-size:2rem;margin-bottom:12px}
-.empty-text{font-size:.85rem;font-family:var(--mono)}
-.loading{display:flex;align-items:center;justify-content:center;padding:60px;gap:12px;color:var(--muted);font-family:var(--mono);font-size:.8rem}
-.spinner{width:20px;height:20px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .7s linear infinite}
+.kv .kl{flex:0 0 180px;white-space:nowrap;color:var(--muted);font-family:var(--mono);font-size:13px}
+.kv .kv2{flex:1;word-break:break-word;color:var(--ink);font-size:14px}
+.raw-json{margin-top:14px;background:var(--surface);border:1px solid var(--border);padding:12px;border-radius:var(--r)}
+.raw-json summary{cursor:pointer;font-family:var(--mono);font-size:12px;color:var(--muted);margin-bottom:8px}
+.raw-json pre{margin:0;white-space:pre;font-family:var(--mono);font-size:12px;line-height:1.5;max-height:280px;overflow:auto;color:var(--ink)}
+/* ── Misc ── */
+.empty{text-align:center;padding:56px 20px;color:var(--muted)}
+.empty-icon{font-size:2rem;margin-bottom:10px;opacity:.4}
+.empty-text{font-size:14px;font-family:var(--mono);color:var(--subtle)}
+.loading{display:flex;align-items:center;justify-content:center;padding:56px;gap:10px;color:var(--muted);font-family:var(--mono);font-size:13px}
+.spinner{width:18px;height:18px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .7s linear infinite}
 @keyframes spin{to{transform:rotate(360deg)}}
 .pager{display:flex;justify-content:center;gap:6px;padding:16px}
-.pager-btn{font-size:.72rem;font-family:var(--mono);padding:5px 12px;border:1px solid var(--border);background:transparent;cursor:pointer;color:var(--ink);transition:all .18s;border-radius:2px}
+.pager-btn{font-size:13px;font-family:var(--mono);padding:5px 12px;border:1px solid var(--border);background:transparent;cursor:pointer;color:var(--muted);transition:all .15s;border-radius:6px}
 .pager-btn:hover,.pager-btn.active{background:var(--ink);color:#fff;border-color:var(--ink)}
 .pager-btn:disabled{opacity:.35;cursor:default}
 .view{display:none}
 .view.active{display:block}
-.ck-inline{display:inline-flex;align-items:center;gap:6px;font-size:.72rem;color:var(--muted);font-family:var(--mono)}
-.ck-inline input{accent-color:var(--accent2)}
+.ck-inline{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);font-family:var(--mono)}
+.ck-inline input{accent-color:var(--accent)}
 .history-table td,.history-table th{white-space:nowrap}
-/* 课程列表中的多时段 */
+/* ── Schedule list multi-slots ── */
 .time-slots{display:flex;flex-direction:column;gap:6px}
-.time-slot{font-size:.75rem;font-family:var(--mono);white-space:normal;word-break:break-word;line-height:1.35}
-.time-slot-week{font-size:.68rem;color:var(--muted);font-family:var(--mono);line-height:1.25}
-.slot-group{border-bottom:1px dashed var(--border-light);padding:6px 0}
+.time-slot{font-size:12px;font-family:var(--mono);white-space:normal;word-break:break-word;line-height:1.35;color:var(--ink)}
+.time-slot-week{font-size:11px;color:var(--subtle);font-family:var(--mono);line-height:1.25}
+.slot-group{border-bottom:1px dashed var(--border);padding:6px 0}
 .slot-group:last-child{border-bottom:none}
-.schedule-list-table{table-layout:fixed;width:100%}
-.schedule-list-table th:nth-child(1),.schedule-list-table td:nth-child(1){width:56px}
-.schedule-list-table th:nth-child(2),.schedule-list-table td:nth-child(2){width:92px}
-.schedule-list-table th:nth-child(3),.schedule-list-table td:nth-child(3){width:92px}
-.schedule-list-table th:nth-child(4),.schedule-list-table td:nth-child(4){width:220px}
-.schedule-list-table th:nth-child(5),.schedule-list-table td:nth-child(5){width:120px}
-.schedule-list-table th:nth-child(6),.schedule-list-table td:nth-child(6){width:auto}
+.schedule-list-table{table-layout:auto;width:100%}
+.schedule-list-table th:nth-child(1),.schedule-list-table td:nth-child(1){width:44px;text-align:center}
+.schedule-list-table th:nth-child(2),.schedule-list-table td:nth-child(2){white-space:nowrap}
+.schedule-list-table th:nth-child(3),.schedule-list-table td:nth-child(3){white-space:nowrap}
+.schedule-list-table th:nth-child(4),.schedule-list-table td:nth-child(4){min-width:160px}
+.schedule-list-table th:nth-child(5),.schedule-list-table td:nth-child(5){white-space:nowrap}
+.schedule-list-table th:nth-child(6),.schedule-list-table td:nth-child(6){min-width:200px}
+/* ── stat-card color bars ── */
+.stat-card:nth-child(1){border-top:2px solid var(--green)}
+.stat-card:nth-child(2){border-top:2px solid #0284c7}
+.stat-card:nth-child(3){border-top:2px solid var(--amber)}
+.stat-card:nth-child(4){border-top:2px solid var(--red)}
+.stat-card:nth-child(5){border-top:2px solid var(--accent2)}
+/* ── Responsive ── */
 @media(max-width:768px){
   :root{--sidebar:0px}
-  .sidebar{position:fixed;left:-240px;top:0;bottom:0;width:240px;z-index:100;transition:left .25s}
+  .sidebar{position:fixed;left:-252px;top:0;bottom:0;width:252px;z-index:100;transition:left .25s}
   .sidebar.open{left:0}
-  .sidebar-mask{display:none;position:fixed;inset:0;background:rgba(15,17,23,.45);z-index:90}
+  .sidebar-mask{display:none;position:fixed;inset:0;background:rgba(17,24,39,.4);z-index:90}
   .sidebar-mask.open{display:block}
   .mobile-menu-btn{display:inline-flex}
-  .topbar{padding:12px 14px;gap:10px}
-  .topbar-left{align-items:center;gap:8px;min-width:0}
-  .topbar-actions{gap:8px}
-  .topbar-actions .status-pill{max-width:56vw;overflow:hidden}
-  .topbar-actions #status-text{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block}
-  .page-title{font-size:1rem;line-height:1.25}
+  .topbar{padding:12px 16px;gap:8px}
   .page-subtitle{display:none}
   .stats-row{grid-template-columns:repeat(2,1fr)}
-  .content{padding:12px}
-  .panel-head{padding:12px 12px}
-  th,td{padding:9px 10px}
-  .kb-header{padding:10px 12px;display:block}
+  .content{padding:14px}
+  .panel-head{padding:12px 14px}
+  th,td{padding:9px 12px}
+  .kb-header{padding:10px 14px;display:block}
   .week-nav{margin-top:8px;flex-wrap:wrap}
   .timeline{padding:12px}
   .tl-item{gap:10px;margin-bottom:14px}
-  .modal-card{width:96vw;max-height:92vh}
-  .modal-head{padding:10px 12px}
-  .modal-body{padding:12px;font-size:.78rem}
+  .modal-card{width:96vw;max-height:92vh;border-radius:12px}
+  .modal-head{padding:12px 16px}
+  .modal-body{padding:14px 16px;font-size:12px}
   .kv{display:block}
-  .kv .kl{display:block;margin-bottom:4px;white-space:normal}
+  .kv .kl{display:block;margin-bottom:3px;white-space:normal}
   #schedule-list .tbl-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
-  .schedule-list-table{table-layout:auto;min-width:760px}
+  .schedule-list-table{table-layout:auto;min-width:680px}
   .schedule-list-table th,.schedule-list-table td{white-space:normal}
 }
 @media(max-width:460px){
@@ -677,7 +744,7 @@ tr:hover td{background:rgba(0,0,0,.018)}
   .topbar-actions .status-pill{display:none}
   .filter-row{width:100%}
   .search-box{width:100%}
-  .week-nav-btn{padding:5px 8px;font-size:.68rem}
+  .week-nav-btn{padding:5px 8px;font-size:11px}
 }
 </style>
 </head>
@@ -686,23 +753,52 @@ tr:hover td{background:rgba(0,0,0,.018)}
 
 <div class="sidebar" id="sidebar">
   <div class="logo">
-    <div class="logo-school">NEAU · Academic Monitor</div>
-    <div class="logo-name">教务<span>监控</span><br>数据中心</div>
+    <div class="logo-school">Northeast Agricultural Univ.</div>
+    <div class="logo-name">
+      <div class="logo-icon">
+        <svg viewBox="0 0 24 24"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
+      </div>
+      教务监控
+    </div>
   </div>
   <nav class="nav">
-    <div class="nav-section">数据总览</div>
-    <div class="nav-item active" onclick="showView('overview')" id="nav-overview"><span class="icon">◈</span>概览仪表盘</div>
+    <div class="nav-section">总览</div>
+    <div class="nav-item active" onclick="showView('overview')" id="nav-overview">
+      <span class="icon"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg></span>
+      概览仪表盘
+    </div>
     <div class="nav-section">当前数据</div>
-    <div class="nav-item" onclick="showView('schedule')" id="nav-schedule"><span class="icon">▦</span>本学期课程表</div>
-    <div class="nav-item" onclick="showView('scores-term')" id="nav-scores-term"><span class="icon">◉</span>本学期成绩</div>
-    <div class="nav-item" onclick="showView('scores-all')" id="nav-scores-all"><span class="icon">≡</span>历史全部成绩</div>
+    <div class="nav-item" onclick="showView('schedule')" id="nav-schedule">
+      <span class="icon"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg></span>
+      本学期课程表
+    </div>
+    <div class="nav-item" onclick="showView('scores-term')" id="nav-scores-term">
+      <span class="icon"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></span>
+      本学期成绩
+    </div>
+    <div class="nav-item" onclick="showView('scores-all')" id="nav-scores-all">
+      <span class="icon"><svg viewBox="0 0 24 24"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg></span>
+      历史全部成绩
+    </div>
     <div class="nav-section">变动记录</div>
-    <div class="nav-item" onclick="showView('changes')" id="nav-changes"><span class="icon">◷</span>变动日志</div>
-    <div class="nav-item" onclick="showView('history')" id="nav-history"><span class="icon">◫</span>历史数据</div>
+    <div class="nav-item" onclick="showView('changes')" id="nav-changes">
+      <span class="icon"><svg viewBox="0 0 24 24"><path d="M18 8h1a4 4 0 0 1 0 8h-1"/><path d="M2 8h16v9a4 4 0 0 1-4 4H6a4 4 0 0 1-4-4V8z"/><line x1="6" y1="1" x2="6" y2="4"/><line x1="10" y1="1" x2="10" y2="4"/><line x1="14" y1="1" x2="14" y2="4"/></svg></span>
+      变动日志
+    </div>
+    <div class="nav-item" onclick="showView('history')" id="nav-history">
+      <span class="icon"><svg viewBox="0 0 24 24"><path d="M3 3v5h5"/><path d="M3.05 13A9 9 0 1 0 6 5.3L3 8"/></svg></span>
+      历史数据
+    </div>
   </nav>
   <div class="sidebar-foot">
-    <div class="user-badge">已登录：{{ user }}</div>
-    <a class="logout-btn" href="/logout">退出登录</a>
+    <div class="user-badge">
+      <svg viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+      已登录：{{ user }}
+    </div>
+    <a class="logout-btn" href="/logout">
+      <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+      退出登录
+    </a>
   </div>
 </div>
 
@@ -711,7 +807,9 @@ tr:hover td{background:rgba(0,0,0,.018)}
 <div class="main">
   <div class="topbar">
     <div class="topbar-left">
-      <button class="mobile-menu-btn" type="button" onclick="toggleSidebar()" aria-label="打开导航">☰</button>
+      <button class="mobile-menu-btn" type="button" onclick="toggleSidebar()" aria-label="打开导航">
+        <svg viewBox="0 0 24 24"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+      </button>
       <div>
         <div class="page-title" id="topbar-title">概览仪表盘</div>
         <div class="page-subtitle" id="topbar-sub">教务系统数据概览</div>
@@ -720,9 +818,12 @@ tr:hover td{background:rgba(0,0,0,.018)}
     <div class="topbar-actions">
       <div class="status-pill">
         <div class="status-dot ok" id="status-dot"></div>
-        <span id="status-text" style="font-family:var(--mono);font-size:.72rem">加载中…</span>
+        <span id="status-text" style="font-family:var(--mono);font-size:11px">加载中…</span>
       </div>
-      <button onclick="refreshCurrent()" style="font-size:.72rem;font-family:var(--mono);padding:6px 14px;border:1px solid var(--border);background:transparent;cursor:pointer;border-radius:2px">↻ 刷新</button>
+      <button class="refresh-btn" onclick="refreshCurrent()">
+        <svg viewBox="0 0 24 24"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+        刷新
+      </button>
     </div>
   </div>
 
@@ -731,16 +832,31 @@ tr:hover td{background:rgba(0,0,0,.018)}
     <!-- 概览 -->
     <div class="view active" id="view-overview">
       <div class="stats-row" id="stats-row">
-        <div class="stat-card clickable" onclick="showView('schedule')"><div class="stat-label">课程总数</div><div class="stat-num" id="st-sch">—</div><div class="stat-sub">点击查看课程表</div></div>
-        <div class="stat-card clickable" onclick="showView('scores-term')"><div class="stat-label">本学期成绩</div><div class="stat-num" id="st-ts">—</div><div class="stat-sub">点击查看详情</div></div>
-        <div class="stat-card clickable" onclick="showView('scores-all')"><div class="stat-label">历史成绩</div><div class="stat-num" id="st-as">—</div><div class="stat-sub">点击查看详情</div></div>
-        <div class="stat-card clickable" onclick="showView('changes')"><div class="stat-label">变动次数</div><div class="stat-num" id="st-ch">—</div><div class="stat-sub">点击查看日志</div></div>
-        <div class="stat-card clickable" onclick="openGpaModal()"><div class="stat-label">实时 GPA</div><div class="stat-num" id="st-gpa">—</div><div class="stat-sub">点击查看详情</div></div>
+        <div class="stat-card clickable" onclick="showView('schedule')">
+          <div class="stat-label"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>课程总数</div>
+          <div class="stat-num" id="st-sch">—</div>
+        </div>
+        <div class="stat-card clickable" onclick="showView('scores-term')">
+          <div class="stat-label"><svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>本学期成绩</div>
+          <div class="stat-num" id="st-ts">—</div>
+        </div>
+        <div class="stat-card clickable" onclick="showView('scores-all')">
+          <div class="stat-label"><svg viewBox="0 0 24 24"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>历史成绩</div>
+          <div class="stat-num" id="st-as">—</div>
+        </div>
+
+        <div class="stat-card clickable" onclick="openGpaModal()">
+          <div class="stat-label"><svg viewBox="0 0 24 24"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>实时 GPA</div>
+          <div class="stat-num" id="st-gpa">—</div>
+        </div>
       </div>
       <div class="panel">
         <div class="panel-head">
-          <div class="panel-title"><div class="dot"></div>最近变动</div>
-          <span style="font-size:.7rem;font-family:var(--mono);color:var(--muted)">最新 5 条</span>
+          <div class="panel-title">
+            <svg viewBox="0 0 24 24"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+            最近变动
+          </div>
+          <span class="panel-meta">最新 5 条</span>
         </div>
         <div id="overview-changes"><div class="loading"><div class="spinner"></div>加载中…</div></div>
       </div>
@@ -750,7 +866,10 @@ tr:hover td{background:rgba(0,0,0,.018)}
     <div class="view" id="view-schedule">
       <div class="panel">
         <div class="panel-head">
-          <div class="panel-title"><div class="dot" style="background:var(--accent2)"></div>本学期课程表</div>
+          <div class="panel-title">
+            <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+            本学期课程表
+          </div>
           <div class="filter-row">
             <button class="filter-btn active" onclick="setSchedView('grid',this)">课表视图</button>
             <button class="filter-btn" onclick="setSchedView('list',this)">列表视图</button>
@@ -765,18 +884,15 @@ tr:hover td{background:rgba(0,0,0,.018)}
     <div class="view" id="view-scores-term">
       <div class="panel">
         <div class="panel-head">
-          <div class="panel-title"><div class="dot" style="background:var(--green)"></div>本学期成绩</div>
+          <div class="panel-title">
+            <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+            本学期成绩
+          </div>
           <div class="filter-row">
             <input class="search-box" placeholder="搜索课程名 / 课程号…" oninput="filterScores('term',this.value)">
           </div>
         </div>
-        <!-- 本学期成绩统计信息区域 -->
-        <!-- TODO: 待补充本学期成绩统计字段后启用
-             可能的字段：课程平均分、课程最高分、课程最低分等
-             需结合实际抓取到的数据结构确定对应 JSON key 后修改此处 -->
-        <div id="term-stats" style="padding:12px 16px;background:#f9f6f0;border-bottom:1px solid var(--border-light);font-size:.78rem;color:var(--muted);font-family:var(--mono);display:none">
-          <!-- 待接入统计数据后展示 -->
-        </div>
+        <div id="term-stats" style="padding:10px 16px;background:var(--surface);border-bottom:1px solid var(--border);font-size:12px;color:var(--muted);font-family:var(--mono);display:none"></div>
         <div class="tbl-wrap" id="scores-term-table"><div class="loading"><div class="spinner"></div>加载中…</div></div>
       </div>
     </div>
@@ -785,7 +901,10 @@ tr:hover td{background:rgba(0,0,0,.018)}
     <div class="view" id="view-scores-all">
       <div class="panel">
         <div class="panel-head">
-          <div class="panel-title"><div class="dot" style="background:#9b6b2b"></div>历史全部成绩</div>
+          <div class="panel-title">
+            <svg viewBox="0 0 24 24"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+            历史全部成绩
+          </div>
           <div class="filter-row">
             <input class="search-box" placeholder="搜索课程名 / 课程号…" oninput="filterScores('all',this.value)">
           </div>
@@ -798,7 +917,10 @@ tr:hover td{background:rgba(0,0,0,.018)}
     <div class="view" id="view-changes">
       <div class="panel">
         <div class="panel-head">
-          <div class="panel-title"><div class="dot" style="background:#9b6b2b"></div>变动日志</div>
+          <div class="panel-title">
+            <svg viewBox="0 0 24 24"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+            变动日志
+          </div>
           <div class="filter-row">
             <button class="filter-btn active" onclick="filterChanges('',this)">全部</button>
             <button class="filter-btn" onclick="filterChanges('schedule',this)">课程表</button>
@@ -816,7 +938,10 @@ tr:hover td{background:rgba(0,0,0,.018)}
     <div class="view" id="view-history">
       <div class="panel">
         <div class="panel-head">
-          <div class="panel-title"><div class="dot" style="background:#6b4fb3"></div>历史数据归档</div>
+          <div class="panel-title">
+            <svg viewBox="0 0 24 24"><path d="M3 3v5h5"/><path d="M3.05 13A9 9 0 1 0 6 5.3L3 8"/></svg>
+            历史数据归档
+          </div>
           <div class="filter-row">
             <button class="filter-btn active" onclick="setHistoryType('',this)">全部</button>
             <button class="filter-btn" onclick="setHistoryType('schedule',this)">课程表</button>
@@ -837,7 +962,10 @@ tr:hover td{background:rgba(0,0,0,.018)}
 <div class="modal-mask" id="gpa-modal" onclick="closeModal('gpa-modal',event)">
   <div class="modal-card">
     <div class="modal-head">
-      <div class="modal-title">GPA 详情</div>
+      <div class="modal-title">
+        <svg viewBox="0 0 24 24"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>
+        GPA 详情
+      </div>
       <button class="modal-close" onclick="closeModal('gpa-modal')">关闭</button>
     </div>
     <div class="modal-body" id="gpa-modal-body"></div>
@@ -892,6 +1020,11 @@ const S = {
 
 const DAYS = ['一','二','三','四','五','六','日'];
 const COLORS = ['','c2','c3','c4','c5'];
+function hashColor(str) {
+  let h = 0;
+  for (let i = 0; i < str.length; i++) h = (Math.imul(31, h) + str.charCodeAt(i)) | 0;
+  return COLORS[Math.abs(h) % COLORS.length];
+}
 
 // 加载字段标签
 async function loadFieldLabels() {
@@ -1292,13 +1425,12 @@ function renderSchedGrid() {
   const startMap = {};  // [day][startSec] -> array of cells
   const covered = {};   // [day] -> Set of sections covered by rowspan
   const colorMap = {};
-  let colorIdx = 0;
   const detailList = [];  // 对应 grid 中每个格子的完整课程信息
   const maxSec = 12;
 
   courses.forEach(course => {
     const kcm = course.kcm || '';
-    if (!colorMap[kcm]) colorMap[kcm] = COLORS[colorIdx++ % COLORS.length];
+    if (!colorMap[kcm]) colorMap[kcm] = hashColor(kcm);
 
     // 找本周有课的所有 session
     const activeSessions = S.showAllCourses
@@ -1397,7 +1529,7 @@ function renderSchedList() {
     raw_course: it.raw_course || it,
     raw_session: it.raw_session || null,
   }));
-  const toolbar = `<div class="list-toolbar" style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 16px;border-bottom:1px solid #ddd;background:#fafafa">
+  const toolbar = `<div class="list-toolbar" style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 16px;border-bottom:1px solid var(--border);background:var(--surface)">
     <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:.72rem;color:var(--muted);font-family:var(--mono)">${S.showAllCourses ? '当前：全部课程' : `当前：第 ${S.viewWeek} 周`}</div>
     <label style="display:flex;align-items:center;gap:6px;font-size:.76rem;color:var(--muted);cursor:pointer;white-space:nowrap;margin-left:auto">
       <input id="show-all-courses" type="checkbox" onchange="toggleShowAllCourses(this.checked)">
@@ -1433,7 +1565,7 @@ function renderSchedList() {
 
   el._courses = courses;
   el.innerHTML = toolbar + nav +
-    `<div style="padding:12px 16px;background:#f5f5f5;border-bottom:1px solid #ddd;font-size:.85rem;color:#666">
+    `<div style="padding:12px 16px;background:var(--surface);border-bottom:1px solid var(--border);font-size:.85rem;color:#666">
       ${S.showAllCourses ? '全部课程' : `本周课程（第 ${S.viewWeek} 周）`} · 共 <strong>${courses.length}</strong> 条记录（展平列表）
     </div>
     <div class="tbl-wrap">
