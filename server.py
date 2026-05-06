@@ -517,9 +517,36 @@ MAIN_HTML = r"""<!DOCTYPE html>
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>教务监控 · 数据中心</title>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script>
+// 在页面加载前应用主题，避免闪屏
+(function() {
+  const saved = localStorage.getItem('theme-preference');
+  const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+  let theme = 'auto';
+  
+  if (saved) {
+    theme = saved;
+  } else if (prefersDark) {
+    theme = 'dark';
+  } else {
+    theme = 'light';
+  }
+  
+  if (theme === 'dark' || (theme === 'auto' && prefersDark)) {
+    if (theme === 'dark') {
+      document.documentElement.setAttribute('data-theme', 'dark');
+    }
+  } else {
+    if (theme === 'light') {
+      document.documentElement.setAttribute('data-theme', 'light');
+    }
+  }
+})();
+</script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 :root{
+  /* 浅色主题 */
   --bg:#f3f4f6;--card:#ffffff;--surface:#f9fafb;
   --ink:#111827;--muted:#6b7280;--subtle:#9ca3af;
   --accent:#16a34a;--accent-hover:#15803d;--accent-light:#f0fdf4;--accent-border:#bbf7d0;
@@ -532,6 +559,38 @@ MAIN_HTML = r"""<!DOCTYPE html>
   --sidebar:248px;
   --r:8px;--r-lg:12px;
 }
+/* 黑暗模式 */
+@media (prefers-color-scheme: dark) {
+  html:not([data-theme="light"]) {
+    --bg:#0f172a;--card:#1e293b;--surface:#0f172a;
+    --ink:#f1f5f9;--muted:#94a3b8;--subtle:#64748b;
+    --accent:#22c55e;--accent-hover:#16a34a;--accent-light:#1e3a1f;--accent-border:#22c55e;
+    --accent2:#14b8a6;
+    --green:#22c55e;--green-light:#1e3a1f;
+    --red:#ef4444;--red-light:#7f1d1d;
+    --amber:#eab308;--amber-light:#422006;
+    --border:#334155;--border-md:#475569;
+  }
+  html:not([data-theme="light"]) .course-cell.c2{background:#1e3a5f;}
+  html:not([data-theme="light"]) .course-cell.c3{background:#3a3620;}
+  html:not([data-theme="light"]) .course-cell.c4{background:#3a2442;}
+  html:not([data-theme="light"]) .course-cell.c5{background:#3a2852;}
+}
+/* 手动黑暗模式 */
+html[data-theme="dark"] {
+  --bg:#0f172a;--card:#1e293b;--surface:#0f172a;
+  --ink:#f1f5f9;--muted:#94a3b8;--subtle:#64748b;
+  --accent:#22c55e;--accent-hover:#16a34a;--accent-light:#1e3a1f;--accent-border:#22c55e;
+  --accent2:#14b8a6;
+  --green:#22c55e;--green-light:#1e3a1f;
+  --red:#ef4444;--red-light:#7f1d1d;
+  --amber:#eab308;--amber-light:#422006;
+  --border:#334155;--border-md:#475569;
+}
+html[data-theme="dark"] .course-cell.c2{background:#1e3a5f;border-left-color:#0284c7}
+html[data-theme="dark"] .course-cell.c3{background:#3a3620;border-left-color:#eab308}
+html[data-theme="dark"] .course-cell.c4{background:#3a2442;border-left-color:#db2777}
+html[data-theme="dark"] .course-cell.c5{background:#3a2852;border-left-color:#9333ea}
 html,body{height:100%;background:var(--bg);font-family:var(--sans);color:var(--ink);font-size:15px}
 /* ── Layout ── */
 .layout{display:flex;height:100vh;overflow:hidden}
@@ -591,7 +650,16 @@ html,body{height:100%;background:var(--bg);font-family:var(--sans);color:var(--i
 .panel-meta{font-size:13px;font-family:var(--mono);color:var(--subtle)}
 .filter-row{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
 .filter-btn{font-size:13px;font-family:var(--mono);padding:4px 11px;border:1px solid var(--border);background:transparent;cursor:pointer;color:var(--muted);transition:all .15s;border-radius:6px;font-weight:500}
-.filter-btn.active,.filter-btn:hover{background:var(--ink);color:#fff;border-color:var(--ink)}
+.filter-btn.active,.filter-btn:hover{background:var(--accent);color:#fff;border-color:var(--accent)}
+@media (prefers-color-scheme: dark) {
+  html:not([data-theme="light"]) .filter-btn.active,html:not([data-theme="light"]) .filter-btn:hover{background:var(--accent);color:#000;border-color:var(--accent)}
+}
+html[data-theme="dark"] .filter-btn.active,html[data-theme="dark"] .filter-btn:hover{background:var(--accent);color:#000;border-color:var(--accent)}
+.theme-selector{display:flex;align-items:center;gap:3px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:2px}
+.theme-option{display:flex;align-items:center;gap:4px;font-size:12px;font-family:var(--mono);padding:5px 10px;border:1px solid transparent;background:transparent;cursor:pointer;color:var(--muted);transition:all .15s;border-radius:5px;font-weight:500}
+.theme-option svg{width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round}
+.theme-option:hover{color:var(--ink)}
+.theme-option.active{background:var(--accent);color:#000;border-color:var(--accent)}
 .search-box{font-size:13px;font-family:var(--mono);padding:6px 11px;border:1px solid var(--border);background:var(--surface);color:var(--ink);outline:none;width:200px;border-radius:var(--r);transition:border-color .15s}
 .search-box:focus{border-color:var(--accent)}
 .tbl-wrap{overflow-x:auto}
@@ -622,7 +690,7 @@ tr:hover td{background:var(--surface)}
 .week-info svg{width:14px;height:14px;fill:none;stroke:var(--muted);stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
 .week-nav{display:flex;align-items:center;gap:6px}
 .week-nav-btn{font-size:13px;font-family:var(--mono);padding:5px 12px;border:1px solid var(--border);background:var(--card);cursor:pointer;border-radius:var(--r);color:var(--muted);transition:all .15s;font-weight:500}
-.week-nav-btn:hover{background:var(--ink);color:#fff;border-color:var(--ink)}
+.week-nav-btn:hover{background:var(--accent);color:#000;border-color:var(--accent)}
 .week-nav-btn:disabled{opacity:.35;cursor:default}
 .kb-wrap{overflow-x:auto;padding:0}
 .kb{width:100%;border-collapse:collapse;background:var(--card);table-layout:fixed}
@@ -636,12 +704,12 @@ tr:hover td{background:var(--surface)}
 .kb td.empty{background:var(--surface)}
 .kb td.course-container{padding:3px}
 .kb tr.slot-gap td{border-top:6px solid var(--bg)}
-.course-cell{background:var(--green-light);border-left:2.5px solid var(--accent);padding:5px 7px;height:100%;font-size:11px;line-height:1.35;border-radius:5px;cursor:pointer;transition:filter .15s;overflow:hidden}
+.course-cell{background:#dcfce7;border-left:2.5px solid var(--accent);padding:5px 7px;height:100%;font-size:11px;line-height:1.35;border-radius:5px;cursor:pointer;transition:filter .15s;overflow:hidden}
 .course-cell:hover{filter:brightness(.95)}
-.course-cell.c2{background:#f0f9ff;border-left-color:#0284c7}
-.course-cell.c3{background:#fffbeb;border-left-color:var(--amber)}
-.course-cell.c4{background:#fdf2f8;border-left-color:#db2777}
-.course-cell.c5{background:#faf5ff;border-left-color:#9333ea}
+.course-cell.c2{background:#e0f2fe;border-left-color:#0284c7}
+.course-cell.c3{background:#fef3c7;border-left-color:var(--amber)}
+.course-cell.c4{background:#fce7f3;border-left-color:#db2777}
+.course-cell.c5{background:#f3e8ff;border-left-color:#9333ea}
 .cc-name{font-weight:600;overflow:hidden;color:var(--ink);font-size:13px;word-break:break-all;white-space:normal;line-height:1.3}
 .cc-sub{color:var(--muted);font-size:12px;font-family:var(--mono);margin-top:1px}
 /* ── Timeline ── */
@@ -816,6 +884,20 @@ tr:hover td{background:var(--surface)}
       </div>
     </div>
     <div class="topbar-actions">
+      <div class="theme-selector">
+        <button class="theme-option" id="theme-auto" onclick="applyTheme('auto')" title="自动模式：跟随系统设置">
+          <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 3v9m6.36-3H12"/></svg>
+          自动
+        </button>
+        <button class="theme-option" id="theme-dark" onclick="applyTheme('dark')" title="深色模式">
+          <svg viewBox="0 0 24 24"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+          深色
+        </button>
+        <button class="theme-option" id="theme-light" onclick="applyTheme('light')" title="浅色模式">
+          <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+          浅色
+        </button>
+      </div>
       <div class="status-pill">
         <div class="status-dot ok" id="status-dot"></div>
         <span id="status-text" style="font-family:var(--mono);font-size:11px">加载中…</span>
@@ -995,6 +1077,55 @@ tr:hover td{background:var(--surface)}
 </div>
 
 <script>
+// ══════════════════════════════════════════════════════════════════
+// 黑暗模式
+// ══════════════════════════════════════════════════════════════════
+function initTheme() {
+  const saved = localStorage.getItem('theme-preference');
+  const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+  let theme = 'auto';
+  
+  if (saved) {
+    theme = saved;
+  } else if (prefersDark) {
+    theme = 'dark';
+  } else {
+    theme = 'light';
+  }
+  
+  applyTheme(theme);
+}
+
+function applyTheme(theme) {
+  if (theme === 'auto') {
+    const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+    if (prefersDark) {
+      document.documentElement.removeAttribute('data-theme');
+    } else {
+      document.documentElement.setAttribute('data-theme', 'light');
+    }
+  } else if (theme === 'dark') {
+    document.documentElement.setAttribute('data-theme', 'dark');
+  } else {
+    document.documentElement.setAttribute('data-theme', 'light');
+  }
+  
+  updateThemeButton(theme);
+  localStorage.setItem('theme-preference', theme);
+}
+
+function updateThemeButton(theme) {
+  document.querySelectorAll('.theme-option').forEach(btn => btn.classList.remove('active'));
+  
+  if (theme === 'auto') {
+    document.getElementById('theme-auto').classList.add('active');
+  } else if (theme === 'dark') {
+    document.getElementById('theme-dark').classList.add('active');
+  } else {
+    document.getElementById('theme-light').classList.add('active');
+  }
+}
+
 // ══════════════════════════════════════════════════════════════════
 // 状态
 // ══════════════════════════════════════════════════════════════════
@@ -2134,6 +2265,7 @@ function errHtml() {
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') closeSidebar();
   });
+  initTheme();
   await loadFieldLabels();
   await loadStatus();
   await loadOverview();
