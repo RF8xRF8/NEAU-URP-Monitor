@@ -1,127 +1,157 @@
-# 东北农业大学教务监控脚本
+# 东北农业大学教务监控
 
-定时抓取**课程表**、**本学期成绩**、**历史成绩**，与本地旧数据对比，有变动时推送通知。
+一个用于东北农业大学教务系统的本地监控工具，当前包含两部分：
 
----
+- `monitor.py`：定时抓取课程表、本学期成绩、历史成绩和 GPA，并在有变动时记录到本地数据目录。
+- `server.py`：读取本地数据，提供一个需要账号密码登录的 Web 查看端。
 
-## 功能
+## 当前能力
 
-| 模块 | 说明 |
-|------|------|
-| 课程表监控 | 检测新增 / 删除 / 时间地点变更 |
-| 本学期成绩监控 | 检测新出成绩 / 成绩修改 |
-| 历史成绩监控 | 检测补录 / 更正的历史成绩 |
-| 多渠道通知 | 企业微信 / Server 酱 / 钉钉 / Bark / 飞书 / Telegram |
-| 本地存档 | 每次变更写入 `data/changes.jsonl`，原始数据保存为 JSON |
+- 课程表监控：检测新增、删除、时间地点变更。
+- 本学期成绩监控：检测新出成绩、成绩修改。
+- 历史成绩监控：检测补录、更正。
+- GPA 监控：抓取 GPA 概览并保存。
+- 本地存档：每次变更写入 `data/changes.jsonl`，原始数据按 JSON 保存。
+- Web 查看：通过浏览器查看课程、成绩、GPA 和变动历史。
 
----
+## 登录方式
 
-## 快速开始
+当前登录流程已经更新为 CAS 认证，不再使用旧版验证码直连登录。
 
-### 1. 安装依赖
+- `use_webvpn = false`：本地直连教务系统，走学校统一认证 CAS，成功后直接进入教务首页。
+- `use_webvpn = true`：先通过 WebVPN 的 CAS 登录，再直接访问 WebVPN 下的教务首页。
+
+账号和密码都使用学校统一身份认证的凭据。
+
+## 安装
+
+推荐使用 `uv`，也可以继续使用 `pip`。
+
+```bash
+uv sync
+```
+
+或者：
 
 ```bash
 pip install -r requirements.txt
 ```
 
-> 如果 `ddddocr` 安装报错，先执行：`pip install onnxruntime`
+依赖会由 `uv` 或 `pip` 自动安装，不需要额外的 OCR 组件。
 
-### 2. 修改配置
+## 配置
 
-打开 `monitor.py`，找到顶部的 `CONFIG` 字典，填写：
+复制 `config.example.json` 为 `config.json`，然后填写你的账号和密码。
 
-```python
-CONFIG = {
-    "username": "你的学号",       # ← 改这里
-    "password": "你的密码",       # ← 改这里
+### 必填项
 
-    "use_webvpn": False,          # 校外访问改为 True
-    "interval": 1800,             # 抓取间隔，单位秒（默认 30 分钟）
-    "data_dir": "./data",         # 数据保存目录
+- `username`：学号
+- `password`：密码
+- `use_webvpn`：是否通过 WebVPN 访问
+- `interval`：监控间隔，单位秒
+- `data_dir`：数据保存目录
 
-    "notify": {
-        # 至少配置一个通知渠道：
-        "wecom_webhook": "",      # 企业微信群机器人 Webhook URL
-        "serverchan_key": "",     # Server 酱 Turbo SendKey
-        "dingtalk_webhook": "",   # 钉钉机器人 Webhook URL
-        "bark_key": "",           # Bark iOS 设备 Key
-        "feishu_webhook": "",     # 飞书机器人 Webhook URL
-        "telegram_token": "",     # Telegram Bot Token
-        "telegram_chat_id": "",   # Telegram Chat ID
-    },
-    ...
+### 可选项
+
+- `notify.pushdeer_key`：PushDeer 推送密钥
+- `base_url`：直连教务系统地址
+- `webvpn_auth`：WebVPN CAS 地址
+- `webvpn_base`：WebVPN 教务地址
+- `cas_service`：WebVPN 认证服务地址
+
+示例：
+
+```json
+{
+  "username": "你的学号",
+  "password": "你的密码",
+  "use_webvpn": false,
+  "interval": 1800,
+  "data_dir": "./data",
+  "notify": {
+    "pushdeer_key": ""
+  },
+  "base_url": "https://zhjwxs.neau.edu.cn",
+  "webvpn_auth": "https://authserver-443.webvpn.neau.edu.cn/authserver",
+  "webvpn_base": "https://zhjwxs-443.webvpn.neau.edu.cn",
+  "cas_service": "https://webvpn.neau.edu.cn/users/auth/cas"
 }
 ```
 
-### 3. 运行
+## 运行
+
+### 启动监控
+
+```bash
+uv run monitor.py
+```
+
+或者：
 
 ```bash
 python monitor.py
 ```
 
----
+### 启动 Web 查看端
 
-## 通知渠道配置指引
-
-### Server 酱（微信推送，最简单）
-
-1. 访问 https://sct.ftqq.com/ 用微信扫码登录
-2. 创建 Key，复制 SendKey
-3. 填入 `"serverchan_key": "SCT..."`
-
-### 企业微信群机器人
-
-1. 群聊 → 添加机器人 → 复制 Webhook URL
-2. 填入 `"wecom_webhook": "https://qyapi.weixin.qq.com/..."`
-
-### Bark（iOS）
-
-1. App Store 下载 Bark
-2. 打开 App，复制设备 Key（一串字母数字）
-3. 填入 `"bark_key": "AbCdEfGhIj"`
-
----
-
-## WebVPN 模式（校外使用）
-
-将 `"use_webvpn": True`，脚本会先通过东农 WebVPN 的 CAS 认证，再访问教务系统。  
-账号密码与教务系统相同（统一身份认证）。
-
----
-
-## 数据文件说明
-
-```
-data/
-├── schedule.json            # 最新课程表
-├── this_term_scores.json    # 本学期最新成绩
-├── all_scores.json          # 历史最新成绩
-└── changes.jsonl            # 每次变动的详细记录（JSONL 格式）
+```bash
+uv run server.py
 ```
 
----
+或者：
 
-## 定时运行（可选）
-
-### Linux / macOS — crontab
-
-```cron
-# 每 30 分钟运行一次（脚本内部已有循环，也可以直接用 python monitor.py 持续运行）
-# 如果想用 crontab 调度单次运行：
-*/30 * * * * cd /path/to/neau_monitor && python monitor.py --once
+```bash
+python server.py
 ```
 
-在脚本中添加 `--once` 支持：在 `main()` 尾部判断 `sys.argv`，
-或者直接让脚本持续运行（推荐，已内置循环）。
+默认地址：`http://127.0.0.1:8080`
 
-### Windows — 任务计划程序
+## 数据文件
 
-创建基本任务 → 触发器"每天/重复执行" → 操作"启动程序" → `python monitor.py`
+监控脚本会把数据写入 `data/`：
 
----
+- `schedule.json`：最新课程表
+- `this_term_scores.json`：本学期最新成绩
+- `all_scores.json`：历史最新成绩
+- `gpa.json`：GPA 概览
+- `changes.jsonl`：每次变动的详细记录
+- `archive/`：按类型归档的历史快照
+
+## Web 查看端说明
+
+`server.py` 只是一个本地查看界面，不负责登录教务系统。它使用 `config.json` 中的账号密码作为本地 Web 登录凭据。
+
+主要接口包括：
+
+- `/api/schedule`
+- `/api/scores/term`
+- `/api/scores/all`
+- `/api/gpa`
+- `/api/changes`
+- `/api/status`
+- `/api/history`
+- `/api/field_labels`
+
+## 常见问题
+
+### 1. 登录失败
+
+先确认 `config.json` 中的账号密码是否正确，再确认当前网络环境：
+
+- 校内直连：保持 `use_webvpn = false`
+- 校外访问：设置 `use_webvpn = true`
+
+### 2. 监控没有数据
+
+检查 `data_dir` 是否可写，以及教务系统当前是否已开放对应页面。
+
+### 3. Web 查看端打不开
+
+确认已经先运行了 `monitor.py`，并且 `data/` 目录里有实际数据。
 
 ## 注意事项
 
-- 验证码使用 `ddddocr` 离线 OCR，识别率约 85%，失败会自动重试最多 5 次。
-- 请勿将学号密码提交到公开仓库。
-- 建议 `interval` 不低于 600 秒（10 分钟），避免频繁请求给服务器造成压力。
+- 当前登录流程已切换为 CAS，不再依赖验证码 OCR。
+- 通知目前仅支持 PushDeer。
+- 请不要把真实学号和密码提交到公开仓库。
+- 建议 `interval` 不低于 600 秒，避免请求过于频繁。

@@ -1,7 +1,7 @@
 """
 东北农业大学教务系统 - 课程表 & 成绩定时监控
 功能：
-    1. 复用 app.py 的登录流程（含 WebVPN），无重复代码
+    1. 复用 app.py 的登录流程（直连 CAS / WebVPN CAS），无重复代码
     2. 抓取到的所有数据按原样保存至 ./data/，同时记录抓取时间
     3. 课程表按「课程号+课序号」去重，记录总课程数
     4. 任何字段变动（GPA 生成时间除外）触发归档 + 记录变动详情
@@ -79,7 +79,7 @@ def label(key: str) -> str:
 # 登录 —— 完全复用 app.py 中的函数
 # ══════════════════════════════════════════════════════════════════
 # app.py 中核心登录逻辑的精简复刻（保持与 app.py 完全一致的行为）
-# 包含：WebVPN 登录、AES 加密、二次认证、直连教务系统登录
+# 包含：WebVPN 登录、AES 加密、二次认证、CAS 直连登录
 
 import base64
 import re
@@ -88,7 +88,6 @@ import pickle
 from bs4 import BeautifulSoup
 from Crypto.Cipher import AES
 from Crypto.Util.Padding import pad
-import ddddocr
 
 UA_PC = {
     "User-Agent": (
@@ -107,6 +106,8 @@ UA_MOBILE = {
     "Accept-Language": "zh-CN,zh;q=0.9",
 }
 _AES_CHARS = "ABCDEFGHJKMNPQRSTWXYZabcdefhijkmnprstwxyz2345678"
+DIRECT_CAS_AUTH = "https://authserver.neau.edu.cn/authserver"
+DIRECT_CAS_SERVICE = "https://zhjwxs.neau.edu.cn/login"
 
 
 def _random_str(n: int) -> str:
@@ -129,7 +130,7 @@ def _first_group_match(text: str, patterns: list) -> str:
     return ""
 
 
-def _get_page_params(sess: requests.Session, url: str, ua: dict = None) -> dict:
+def _get_page_params(sess: requests.Session, url: str, ua: dict | None = None) -> dict:
     """访问 CAS 登录页，提取 execution / pwdEncryptSalt，对齐 app.py 逻辑。"""
     ua = ua or UA_MOBILE
     r = sess.get(url, headers=ua, allow_redirects=True, timeout=10)
@@ -206,6 +207,22 @@ def _do_webvpn_reauth(sess: requests.Session, reauth_url: str,
             return True
         log.error(f"二次认证响应无法解析: {text[:100]}")
         return False
+
+
+def _analyze_login_failure(resp_text: str, resp_url: str) -> tuple[bool, str]:
+    text = re.sub(r"\s+", " ", (resp_text or ""))
+    password_pats = (
+        "用户名或密码错误", "账号或密码错误", "学号或密码错误", "密码错误", "用户名错误"
+    )
+    captcha_pats = (
+        "验证码错误", "验证码不正确", "验证码有误", "captcha", "验证码"
+    )
+
+    if any(p in text for p in password_pats):
+        return False, "教务登录失败：账号或密码错误"
+    if any(p in text.lower() for p in captcha_pats) or "captcha" in resp_url.lower():
+        return True, "教务登录失败：验证码识别失败，准备重试"
+    return True, "教务登录失败：未知原因，准备重试"
 
 
 def _login_webvpn(sess: requests.Session, username: str, password: str,
@@ -288,49 +305,92 @@ def _login_webvpn(sess: requests.Session, username: str, password: str,
     return True
 
 
-def _login_direct(sess: requests.Session, username: str, password: str, base_url: str) -> bool:
-    """直连教务系统（验证码），最多重试 5 次。"""
-    log.info("尝试直连登录…")
+def _login_direct_cas(sess: requests.Session, username: str, password: str,
+                      base_url: str) -> bool:
+    """直连教务系统的 CAS 登录。"""
+    from urllib.parse import urljoin
+
+    login_url = f"{DIRECT_CAS_AUTH}/login?service={DIRECT_CAS_SERVICE}"
+    log.info("通过 CAS 统一认证直连登录…")
+
     try:
-        page = sess.get(f"{base_url}/login", headers=UA_PC, timeout=10)
-    except Exception as e:
-        log.error(f"无法访问登录页: {e}")
+        base_auth = "https://authserver.neau.edu.cn"
+        ajax_h = {**UA_PC, "X-Requested-With": "XMLHttpRequest", "Referer": base_auth + "/"}
+        sess.get(base_auth, headers=UA_PC, allow_redirects=True, timeout=10)
+        sess.post(f"{base_auth}/authserver/common/getLanguageTypes.htl", data={}, headers=ajax_h, timeout=10)
+        sess.get(f"{base_auth}/authserver/tenant/info", headers=ajax_h, timeout=10)
+    except Exception as ex:
+        log.warning(f"CAS 会话预热失败(可忽略): {ex}")
+
+    params = _get_page_params(sess, login_url, ua=UA_PC)
+    execution = params.get("execution", "")
+    salt = params.get("pub_key", "")
+    post_url = params.get("final_url", login_url)
+
+    if not execution:
+        log.error("CAS 登录失败：未获取 execution")
         return False
 
-    m = re.search(r'(?:name|id)=["\']tokenValue["\'][^>]*value=["\']([^"\']{10,})["\']', page.text)
-    tok = m.group(1) if m else ""
-
-    for attempt in range(5):
+    def _submit(ex_value: str, salt_value: str):
         try:
-            r_cap = sess.get(f"{base_url}/img/captcha.jpg", headers=UA_PC, timeout=10)
-            r_cap.raise_for_status()
-            ocr = ddddocr.DdddOcr(show_ad=False)
-            cap_text = ocr.classification(r_cap.content).strip()
-            log.info(f"验证码识别: {cap_text}")
-        except Exception as e:
-            log.warning(f"验证码获取失败({attempt + 1}/5): {e}")
-            time.sleep(1)
-            continue
+            enc_pwd = _aes_encrypt(password, salt_value) if salt_value else password
+        except Exception as ex:
+            log.warning(f"CAS AES 加密失败({ex})，使用明文提交")
+            enc_pwd = password
 
-        r = sess.post(
-            f"{base_url}/j_spring_security_check",
-            data={"lang": "zh", "tokenValue": tok, "j_username": username,
-                  "j_password": password, "j_captcha": cap_text},
-            headers={**UA_PC, "Content-Type": "application/x-www-form-urlencoded",
-                     "Referer": f"{base_url}/login"},
-            allow_redirects=True, timeout=15,
-        )
-        if "login" not in r.url and "j_spring_security_check" not in r.url:
-            log.info("直连登录成功")
-            return True
-        if "密码" in r.text or "password" in r.text.lower():
-            log.error("账号或密码错误")
-            return False
-        log.warning(f"验证码错误，重试 {attempt + 1}/5…")
-        time.sleep(1)
+        data = {
+            "username": username,
+            "password": enc_pwd,
+            "captcha": "",
+            "_eventId": "submit",
+            "lt": "",
+            "cllt": "userNameLogin",
+            "dllt": "generalLogin",
+            "execution": ex_value,
+        }
+        headers = {
+            **UA_PC,
+            "Content-Type": "application/x-www-form-urlencoded",
+            "Referer": post_url,
+            "Origin": "https://authserver.neau.edu.cn",
+            "Upgrade-Insecure-Requests": "1",
+        }
+        return sess.post(post_url, data=data, headers=headers, allow_redirects=False, timeout=15)
 
-    log.error("验证码识别连续失败")
-    return False
+    r = _submit(execution, salt)
+
+    if r.status_code == 200:
+        params2 = _get_page_params(sess, post_url, ua=UA_PC)
+        execution2 = params2.get("execution", "")
+        salt2 = params2.get("pub_key", "")
+        if execution2 and execution2 != execution:
+            log.info("CAS 首次提交返回 200，使用新 execution/salt 重试")
+            r = _submit(execution2, salt2)
+
+    if r.status_code not in (301, 302):
+        tip = re.sub(r"\s+", " ", r.text)[:180]
+        log.error(f"CAS 登录失败: HTTP {r.status_code} {tip}")
+        return False
+
+    location = r.headers.get("Location", "")
+    if location:
+        next_url = urljoin(post_url, location)
+        sess.get(next_url, headers=UA_PC, allow_redirects=True, timeout=15)
+
+    try:
+        probe = sess.get(f"{base_url}/login", headers=UA_PC, allow_redirects=True, timeout=10)
+    except Exception as ex:
+        log.error(f"CAS 登录后探测教务系统异常: {ex}")
+        return False
+
+    final_url = probe.url.lower()
+    if "authserver.neau.edu.cn/authserver/login" in final_url:
+        retryable, reason = _analyze_login_failure(probe.text, probe.url)
+        log.error(reason or "CAS 登录失败：仍停留在统一认证页")
+        return False
+
+    log.info("CAS 登录成功")
+    return True
 
 # ══════════════════════════════════════════════════════════════════
 # Cookie 持久化
@@ -401,14 +461,14 @@ def do_login(config: dict) -> requests.Session | None:
         if not ok:
             log.error("WebVPN 认证失败")
             return None
-        log.info("WebVPN 就绪，开始教务登录…")
-    else:
-        log.info("直连登录…")
+        log.info("WebVPN 已通过 CAS 认证，教务首页可直接访问")
+        save_cookies(sess, data_dir)
+        return sess
 
+    log.info("直连 CAS 登录…")
     for attempt in range(1, 6):
         try:
-            if _login_direct(sess, username, password, base_url):
-                # 登录成功，保存新的 Cookie
+            if _login_direct_cas(sess, username, password, base_url):
                 save_cookies(sess, data_dir)
                 return sess
         except Exception as e:

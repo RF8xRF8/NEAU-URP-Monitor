@@ -11,3 +11,4 @@ wheels/
 /data
 config.json
 *.log
+requirements.txt

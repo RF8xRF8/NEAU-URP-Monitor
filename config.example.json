@@ -5,14 +5,7 @@
   "interval": 1800,
   "data_dir": "./data",
   "notify": {
-    "wecom_webhook": "",
-    "serverchan_key": "",
-    "dingtalk_webhook": "",
-    "bark_key": "",
-    "feishu_webhook": "",
-    "pushdeer_key": "",
-    "telegram_token": "",
-    "telegram_chat_id": ""
+    "pushdeer_key": ""
   },
   "base_url": "https://zhjwxs.neau.edu.cn",
   "webvpn_auth": "https://authserver-443.webvpn.neau.edu.cn/authserver",
