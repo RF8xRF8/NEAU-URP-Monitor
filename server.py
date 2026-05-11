@@ -429,6 +429,31 @@ LOGIN_HTML = r"""<!DOCTYPE html>
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>教务监控 · 登录</title>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script>
+(function() {
+  const saved = localStorage.getItem('theme-preference');
+  const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+  let theme = 'auto';
+  
+  if (saved) {
+    theme = saved;
+  } else if (prefersDark) {
+    theme = 'dark';
+  } else {
+    theme = 'light';
+  }
+  
+  if (theme === 'dark' || (theme === 'auto' && prefersDark)) {
+    if (theme === 'dark') {
+      document.documentElement.setAttribute('data-theme', 'dark');
+    }
+  } else {
+    if (theme === 'light') {
+      document.documentElement.setAttribute('data-theme', 'light');
+    }
+  }
+})();
+</script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 :root{
@@ -439,6 +464,22 @@ LOGIN_HTML = r"""<!DOCTYPE html>
   --border:#e5e7eb;--border-focus:#16a34a;
   --sans:'Plus Jakarta Sans',system-ui,sans-serif;--mono:'IBM Plex Mono',monospace;
   --r:10px;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg:#0f172a;--surface:#1e293b;
+    --ink:#f1f5f9;--muted:#94a3b8;--subtle:#64748b;
+    --accent:#22c55e;--accent-hover:#16a34a;--accent-light:#1e3a1f;--accent-border:#22c55e;
+    --red:#ef4444;--red-light:#7f1d1d;--red-border:#991b1b;
+    --border:#334155;--border-focus:#22c55e;
+  }
+}
+html[data-theme="dark"] {
+  --bg:#0f172a;--surface:#1e293b;
+  --ink:#f1f5f9;--muted:#94a3b8;--subtle:#64748b;
+  --accent:#22c55e;--accent-hover:#16a34a;--accent-light:#1e3a1f;--accent-border:#22c55e;
+  --red:#ef4444;--red-light:#7f1d1d;--red-border:#991b1b;
+  --border:#334155;--border-focus:#22c55e;
 }
 body{min-height:100vh;display:flex;align-items:center;justify-content:center;background:var(--bg);font-family:var(--sans)}
 .wrap{width:100%;max-width:420px;padding:24px}
@@ -454,7 +495,7 @@ body{min-height:100vh;display:flex;align-items:center;justify-content:center;bac
 label{display:flex;align-items:center;gap:6px;font-size:12px;font-weight:500;color:var(--muted);margin-bottom:6px;font-family:var(--mono);letter-spacing:.03em;text-transform:uppercase}
 label svg{width:13px;height:13px;flex-shrink:0;opacity:.6}
 input{width:100%;border:1px solid var(--border);padding:10px 13px;font-size:14px;font-family:var(--mono);color:var(--ink);background:var(--surface);outline:none;transition:border-color .18s,background .18s;border-radius:8px}
-input:focus{border-color:var(--border-focus);background:#fff}
+input:focus{border-color:var(--border-focus);background:var(--surface)}
 .btn{width:100%;padding:11px;background:var(--accent);color:#fff;border:none;font-family:var(--sans);font-size:14px;font-weight:600;cursor:pointer;border-radius:8px;transition:background .18s;display:flex;align-items:center;justify-content:center;gap:8px;margin-top:8px}
 .btn:hover{background:var(--accent-hover)}
 .btn svg{width:15px;height:15px;fill:none;stroke:#fff;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
@@ -571,6 +612,7 @@ MAIN_HTML = r"""<!DOCTYPE html>
     --amber:#eab308;--amber-light:#422006;
     --border:#334155;--border-md:#475569;
   }
+  html:not([data-theme="light"]) .course-cell{background:#1e3a1f;border-left-color:#22c55e;}
   html:not([data-theme="light"]) .course-cell.c2{background:#1e3a5f;}
   html:not([data-theme="light"]) .course-cell.c3{background:#3a3620;}
   html:not([data-theme="light"]) .course-cell.c4{background:#3a2442;}
@@ -587,6 +629,7 @@ html[data-theme="dark"] {
   --amber:#eab308;--amber-light:#422006;
   --border:#334155;--border-md:#475569;
 }
+html[data-theme="dark"] .course-cell{background:#1e3a1f;border-left-color:#22c55e}
 html[data-theme="dark"] .course-cell.c2{background:#1e3a5f;border-left-color:#0284c7}
 html[data-theme="dark"] .course-cell.c3{background:#3a3620;border-left-color:#eab308}
 html[data-theme="dark"] .course-cell.c4{background:#3a2442;border-left-color:#db2777}
@@ -616,6 +659,11 @@ html,body{height:100%;background:var(--bg);font-family:var(--sans);color:var(--i
 .logout-btn{display:flex;align-items:center;gap:5px;margin-top:8px;font-size:13px;color:var(--subtle);font-family:var(--mono);cursor:pointer;text-decoration:none;transition:color .15s}
 .logout-btn:hover{color:var(--red)}
 .logout-btn svg{width:13px;height:13px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.theme-selector-sidebar{display:flex;align-items:center;gap:6px;margin-bottom:12px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:4px;width:fit-content}
+.theme-option-sidebar{display:flex;align-items:center;justify-content:center;width:28px;height:28px;background:transparent;border:1px solid transparent;cursor:pointer;color:var(--muted);transition:all .15s;border-radius:5px;padding:0;font-size:0}
+.theme-option-sidebar:hover{color:var(--ink)}
+.theme-option-sidebar.active{background:var(--accent);color:#000;border-color:var(--accent)}
+.theme-option-sidebar svg{width:13px;height:13px;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round}
 /* ── Main ── */
 .main{flex:1;overflow-y:auto;display:flex;flex-direction:column;min-width:0}
 .topbar{padding:14px 24px;border-bottom:1px solid var(--border);background:var(--card);display:flex;align-items:center;justify-content:space-between;flex-shrink:0;gap:12px}
@@ -859,6 +907,17 @@ tr:hover td{background:var(--surface)}
     </div>
   </nav>
   <div class="sidebar-foot">
+    <div class="theme-selector-sidebar">
+      <button class="theme-option-sidebar" id="theme-auto" onclick="applyTheme('auto')" title="自动模式">
+        <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 3v9m6.36-3H12"/></svg>
+      </button>
+      <button class="theme-option-sidebar" id="theme-dark" onclick="applyTheme('dark')" title="深色模式">
+        <svg viewBox="0 0 24 24"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+      </button>
+      <button class="theme-option-sidebar" id="theme-light" onclick="applyTheme('light')" title="浅色模式">
+        <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+      </button>
+    </div>
     <div class="user-badge">
       <svg viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
       已登录：{{ user }}
@@ -884,20 +943,6 @@ tr:hover td{background:var(--surface)}
       </div>
     </div>
     <div class="topbar-actions">
-      <div class="theme-selector">
-        <button class="theme-option" id="theme-auto" onclick="applyTheme('auto')" title="自动模式：跟随系统设置">
-          <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 3v9m6.36-3H12"/></svg>
-          自动
-        </button>
-        <button class="theme-option" id="theme-dark" onclick="applyTheme('dark')" title="深色模式">
-          <svg viewBox="0 0 24 24"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
-          深色
-        </button>
-        <button class="theme-option" id="theme-light" onclick="applyTheme('light')" title="浅色模式">
-          <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
-          浅色
-        </button>
-      </div>
       <div class="status-pill">
         <div class="status-dot ok" id="status-dot"></div>
         <span id="status-text" style="font-family:var(--mono);font-size:11px">加载中…</span>
@@ -1115,7 +1160,7 @@ function applyTheme(theme) {
 }
 
 function updateThemeButton(theme) {
-  document.querySelectorAll('.theme-option').forEach(btn => btn.classList.remove('active'));
+  document.querySelectorAll('.theme-option-sidebar').forEach(btn => btn.classList.remove('active'));
   
   if (theme === 'auto') {
     document.getElementById('theme-auto').classList.add('active');
