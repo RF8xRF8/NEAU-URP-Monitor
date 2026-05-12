@@ -1,102 +1,68 @@
 # 东北农业大学教务监控
 
-一个用于东北农业大学教务系统的本地监控工具，当前包含两部分：
+教务系统本地监控工具，支持课程表、成绩、GPA 变动检测，提供 Web 查看界面。
 
-- `monitor.py`：定时抓取课程表、本学期成绩、历史成绩和 GPA，并在有变动时记录到本地数据目录。
-- `server.py`：读取本地数据，提供一个需要账号密码登录的 Web 查看端。
+## 功能
 
-## 当前能力
+- **课程表监控**：检测新增、删除、时间地点变更
+- **成绩监控**：本学期成绩、历史成绩变动
+- **GPA 监控**：GPA 概览抓取和保存
+- **本地存档**：变动记录写入 `data/changes.jsonl`
+- **Web 界面**：浏览器查看课程、成绩、GPA 和变动历史
 
-- 课程表监控：检测新增、删除、时间地点变更。
-- 本学期成绩监控：检测新出成绩、成绩修改。
-- 历史成绩监控：检测补录、更正。
-- GPA 监控：抓取 GPA 概览并保存。
-- 本地存档：每次变更写入 `data/changes.jsonl`，原始数据按 JSON 保存。
-- Web 查看：通过浏览器查看课程、成绩、GPA 和变动历史。
+## 快速开始
 
-## 登录方式
-
-当前登录流程已经更新为 CAS 认证，不再使用旧版验证码直连登录。
-
-- `use_webvpn = false`：本地直连教务系统，走学校统一认证 CAS，成功后直接进入教务首页。
-- `use_webvpn = true`：先通过 WebVPN 的 CAS 登录，再直接访问 WebVPN 下的教务首页。
-
-账号和密码都使用学校统一身份认证的凭据。
-
-## 安装
-
-推荐使用 `uv`，也可以继续使用 `pip`。
-
-```bash
-uv sync
-```
-
-或者：
+### 1. 安装依赖
 
 ```bash
 pip install -r requirements.txt
 ```
 
-依赖会由 `uv` 或 `pip` 自动安装，不需要额外的 OCR 组件。
+### 2. 配置
 
-## 配置
-
-复制 `config.example.json` 为 `config.json`，然后填写你的账号和密码。
-
-### 必填项
-
-- `username`：学号
-- `password`：密码
-- `use_webvpn`：是否通过 WebVPN 访问
-- `interval`：监控间隔，单位秒
-- `data_dir`：数据保存目录
-
-### 可选项
-
-- `notify.pushdeer_key`：PushDeer 推送密钥
-- `base_url`：直连教务系统地址
-- `webvpn_auth`：WebVPN CAS 地址
-- `webvpn_base`：WebVPN 教务地址
-- `cas_service`：WebVPN 认证服务地址
-
-示例：
+复制 `config.example.json` 为 `config.json`，填写以下信息：
 
 ```json
 {
-  "username": "你的学号",
-  "password": "你的密码",
+  "username": "学号",
+  "password": "密码",
   "use_webvpn": false,
   "interval": 1800,
   "data_dir": "./data",
-  "notify": {
-    "pushdeer_key": ""
-  },
-  "base_url": "https://zhjwxs.neau.edu.cn",
-  "webvpn_auth": "https://authserver-443.webvpn.neau.edu.cn/authserver",
-  "webvpn_base": "https://zhjwxs-443.webvpn.neau.edu.cn",
-  "cas_service": "https://webvpn.neau.edu.cn/users/auth/cas"
+  "direct_cas_auth": "https://authserver.neau.edu.cn/authserver",
+  "direct_cas_service": "https://zhjwxs.neau.edu.cn/login"
 }
 ```
 
-## 运行
+**可选配置**：
+- `notify.pushdeer_key`：PushDeer 推送密钥
+- `base_url`：教务系统地址（默认：`https://zhjwxs.neau.edu.cn`）
+- `direct_cas_auth`：直连 CAS 认证地址
+- `direct_cas_service`：直连 CAS service 地址
+- `use_webvpn`：是否通过 WebVPN 访问
 
-### 启动监控
+### 3. 运行
 
-```bash
-uv run monitor.py
-```
-
-或者：
+启动监控：
 
 ```bash
 python monitor.py
 ```
 
-### 启动 Web 查看端
+启动 Web 查看端（可选）：
 
 ```bash
-uv run server.py
+python server.py
 ```
+
+通过浏览器访问 `http://localhost:5000` 查看监控数据。
+
+## 登录方式
+
+使用学校统一身份认证（CAS）。
+
+- `use_webvpn: false`：直连教务系统
+- `use_webvpn: true`：通过 WebVPN 访问
 
 或者：
 
@@ -151,7 +117,7 @@ python server.py
 
 ## 注意事项
 
-- 当前登录流程已切换为 CAS，不再依赖验证码 OCR。
+- 
 - 通知目前仅支持 PushDeer。
 - 请不要把真实学号和密码提交到公开仓库。
 - 建议 `interval` 不低于 600 秒，避免请求过于频繁。

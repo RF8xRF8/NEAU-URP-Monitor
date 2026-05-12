@@ -35,6 +35,8 @@ def _load_config() -> dict:
     )
 
 CONFIG = _load_config()
+DIRECT_CAS_AUTH = CONFIG.get("direct_cas_auth", "https://authserver.neau.edu.cn/authserver")
+DIRECT_CAS_SERVICE = CONFIG.get("direct_cas_service", "https://zhjwxs.neau.edu.cn/login")
 
 # ══════════════════════════════════════════════════════════════════
 # 日志
@@ -106,8 +108,6 @@ UA_MOBILE = {
     "Accept-Language": "zh-CN,zh;q=0.9",
 }
 _AES_CHARS = "ABCDEFGHJKMNPQRSTWXYZabcdefhijkmnprstwxyz2345678"
-DIRECT_CAS_AUTH = "https://authserver.neau.edu.cn/authserver"
-DIRECT_CAS_SERVICE = "https://zhjwxs.neau.edu.cn/login"
 
 
 def _random_str(n: int) -> str:
@@ -165,7 +165,7 @@ def _get_page_params(sess: requests.Session, url: str, ua: dict | None = None) -
 
     result["final_url"] = r.url
     log.info(f"登录页参数: execution={'有' if result.get('execution') else '无'} "
-             f"salt={'有' if result.get('pub_key') else '无'} url={r.url[:60]}")
+             f"salt={'有' if result.get('pub_key') else '无'} url={r.url}")
     return result
 
 
@@ -173,7 +173,7 @@ def _do_webvpn_reauth(sess: requests.Session, reauth_url: str,
                       password: str, webvpn_auth: str, cas_service: str) -> bool:
     if not reauth_url.startswith("http"):
         reauth_url = f"{webvpn_auth.rsplit('/authserver', 1)[0]}{reauth_url}"
-    log.info(f"二次认证页: {reauth_url[:80]}")
+    log.info(f"二次认证页: {reauth_url}")
     params = _get_page_params(sess, reauth_url)
     try:
         enc_pwd = _aes_encrypt(password, params.get("pub_key", "")) if params.get("pub_key") else password
@@ -227,7 +227,6 @@ def _analyze_login_failure(resp_text: str, resp_url: str) -> tuple[bool, str]:
 
 def _login_webvpn(sess: requests.Session, username: str, password: str,
                   webvpn_auth: str, webvpn_base: str, cas_service: str) -> bool:
-    """WebVPN 登录流程，与 app.py do_login_webvpn 完全对齐。"""
     from urllib.parse import urljoin
     base_auth = webvpn_auth.rsplit("/authserver", 1)[0]
     login_url = f"{webvpn_auth}/login?service={cas_service}/callback?url"
@@ -295,7 +294,7 @@ def _login_webvpn(sess: requests.Session, username: str, password: str,
     try:
         probe = sess.get(f"{webvpn_base}/login", headers=UA_MOBILE, allow_redirects=True, timeout=10)
         if probe.status_code != 200:
-            log.error(f"WebVPN 通道建立后探测教务页失败: HTTP {probe.status_code}")
+            log.error(f"WebVPN 建立后探测教务页失败: HTTP {probe.status_code}")
             return False
     except Exception as ex:
         log.error(f"WebVPN 探测教务页异常: {ex}")
@@ -540,14 +539,14 @@ def fetch_this_term_scores(sess: requests.Session, base_url: str) -> dict | list
 
 def fetch_all_scores(sess: requests.Session, base_url: str) -> dict | list | None:
     """抓取历史全部成绩，原样返回服务器 JSON。"""
-    index_url = f"{base_url}/student/integratedQuery/scoreQuery/allPassingScores/index"
+    index_url = f"{base_url}/student/integratedQuery/scoreQuery/schemeScores/index"
     try:
         r_idx = sess.get(index_url, headers=UA_PC, timeout=10)
         if "login" in r_idx.url:
             return None
-        token_seg = _extract_score_token(r_idx.url, r_idx.text, "allPassingScores")
-        cb_url = (f"{base_url}/student/integratedQuery/scoreQuery/{token_seg}/allPassingScores/callback"
-                  if token_seg else f"{base_url}/student/integratedQuery/scoreQuery/allPassingScores/callback")
+        token_seg = _extract_score_token(r_idx.url, r_idx.text, "schemeScores")
+        cb_url = (f"{base_url}/student/integratedQuery/scoreQuery/{token_seg}/schemeScores/callback"
+                  if token_seg else f"{base_url}/student/integratedQuery/scoreQuery/schemeScores/callback")
         r = sess.get(cb_url, headers={**UA_PC, "X-Requested-With": "XMLHttpRequest",
                                        "Referer": index_url}, timeout=15)
         if "login" in r.url:

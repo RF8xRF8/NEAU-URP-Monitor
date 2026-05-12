@@ -8,6 +8,8 @@
     "pushdeer_key": ""
   },
   "base_url": "https://zhjwxs.neau.edu.cn",
+  "direct_cas_auth": "https://authserver.neau.edu.cn/authserver",
+  "direct_cas_service": "https://zhjwxs.neau.edu.cn/login",
   "webvpn_auth": "https://authserver-443.webvpn.neau.edu.cn/authserver",
   "webvpn_base": "https://zhjwxs-443.webvpn.neau.edu.cn",
   "cas_service": "https://webvpn.neau.edu.cn/users/auth/cas"
