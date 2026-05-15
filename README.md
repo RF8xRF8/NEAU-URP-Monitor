@@ -27,6 +27,7 @@ pip install -r requirements.txt
   "username": "学号",
   "password": "密码",
   "use_webvpn": false,
+  "use_cas": true,
   "interval": 1800,
   "data_dir": "./data",
   "direct_cas_auth": "https://authserver.neau.edu.cn/authserver",
@@ -40,6 +41,7 @@ pip install -r requirements.txt
 - `direct_cas_auth`：直连 CAS 认证地址
 - `direct_cas_service`：直连 CAS service 地址
 - `use_webvpn`：是否通过 WebVPN 访问
+- `use_cas`：连教务时是否使用 CAS 登录；`false` 时回退到旧版验证码登录
 
 ### 3. 运行
 
@@ -59,10 +61,12 @@ python server.py
 
 ## 登录方式
 
-使用学校统一身份认证（CAS）。
+直连教务时可以在 `use_cas` 和 `use_webvpn` 两个开关之间组合：
 
-- `use_webvpn: false`：直连教务系统
-- `use_webvpn: true`：通过 WebVPN 访问
+- `use_cas: true` 且 `use_webvpn: false`：直连 CAS，成功后直接进入教务首页
+- `use_cas: false` 且 `use_webvpn: false`：使用旧版教务登录流程，依赖验证码 OCR
+- `use_cas: true` 且 `use_webvpn: true`：先通过 WebVPN 的 CAS 认证，再直接进入教务首页
+- `use_cas: false` 且 `use_webvpn: true`：先通过 WebVPN 的 CAS 认证建立通道，再在通道内继续使用旧版教务登录
 
 或者：
 
@@ -104,7 +108,8 @@ python server.py
 
 先确认 `config.json` 中的账号密码是否正确，再确认当前网络环境：
 
-- 校内直连：保持 `use_webvpn = false`
+- 校内直连并使用新流程：保持 `use_webvpn = false`、`use_cas = true`
+- 校内直连并使用旧流程：保持 `use_webvpn = false`、`use_cas = false`
 - 校外访问：设置 `use_webvpn = true`
 
 ### 2. 监控没有数据

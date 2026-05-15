@@ -391,6 +391,66 @@ def _login_direct_cas(sess: requests.Session, username: str, password: str,
     log.info("CAS 登录成功")
     return True
 
+
+def _login_direct_legacy(sess: requests.Session, username: str, password: str,
+                         base_url: str) -> bool:
+    """5 月 6 日前的旧版教务登录：登录页 + 验证码 OCR。"""
+    try:
+        import ddddocr
+    except ImportError:
+        log.error("旧版教务登录需要 ddddocr，请先安装依赖后再设置 use_cas=false")
+        return False
+
+    log.info("使用旧版教务登录流程…")
+    try:
+        page = sess.get(f"{base_url}/login", headers=UA_PC, timeout=10)
+    except Exception as e:
+        log.error(f"无法访问登录页: {e}")
+        return False
+
+    m = re.search(r'(?:name|id)=["\']tokenValue["\'][^>]*value=["\']([^"\']{10,})["\']', page.text)
+    tok = m.group(1) if m else ""
+
+    ocr = ddddocr.DdddOcr(show_ad=False)
+
+    for attempt in range(5):
+        try:
+            r_cap = sess.get(f"{base_url}/img/captcha.jpg", headers=UA_PC, timeout=10)
+            r_cap.raise_for_status()
+            cap_raw = ocr.classification(r_cap.content)
+            cap_text = cap_raw.strip() if isinstance(cap_raw, str) else str(cap_raw).strip()
+            log.info(f"验证码识别: {cap_text}")
+        except Exception as e:
+            log.warning(f"验证码获取失败({attempt + 1}/5): {e}")
+            time.sleep(1)
+            continue
+
+        try:
+            r = sess.post(
+                f"{base_url}/j_spring_security_check",
+                data={"lang": "zh", "tokenValue": tok, "j_username": username,
+                      "j_password": password, "j_captcha": cap_text},
+                headers={**UA_PC, "Content-Type": "application/x-www-form-urlencoded",
+                         "Referer": f"{base_url}/login"},
+                allow_redirects=True, timeout=15,
+            )
+        except Exception as e:
+            log.warning(f"教务登录请求异常({attempt + 1}/5): {e}")
+            time.sleep(1)
+            continue
+
+        if "login" not in r.url and "j_spring_security_check" not in r.url:
+            log.info("旧版教务登录成功")
+            return True
+        if "密码" in r.text or "password" in r.text.lower():
+            log.error("账号或密码错误")
+            return False
+        log.warning(f"验证码识别错误，重试 {attempt + 1}/5…")
+        time.sleep(1)
+
+    log.error("验证码识别连续失败")
+    return False
+
 # ══════════════════════════════════════════════════════════════════
 # Cookie 持久化
 # ══════════════════════════════════════════════════════════════════
@@ -428,6 +488,7 @@ def do_login(config: dict) -> requests.Session | None:
     sess = requests.Session()
     data_dir = config["data_dir"]
     use_webvpn = config.get("use_webvpn", False)
+    use_cas = config.get("use_cas", True)
     base_url = config["webvpn_base"] if use_webvpn else config["base_url"]
 
     # 尝试加载历史 Cookie
@@ -460,20 +521,46 @@ def do_login(config: dict) -> requests.Session | None:
         if not ok:
             log.error("WebVPN 认证失败")
             return None
-        log.info("WebVPN 已通过 CAS 认证，教务首页可直接访问")
-        save_cookies(sess, data_dir)
-        return sess
+        if use_cas:
+            log.info("WebVPN 已通过 CAS 认证，教务首页可直接访问")
+            save_cookies(sess, data_dir)
+            return sess
 
-    log.info("直连 CAS 登录…")
-    for attempt in range(1, 6):
-        try:
-            if _login_direct_cas(sess, username, password, base_url):
-                save_cookies(sess, data_dir)
-                return sess
-        except Exception as e:
-            log.warning(f"教务登录异常({attempt}/5): {e}")
-        if attempt < 5:
-            time.sleep(2)
+        log.info("WebVPN 通道已建立，使用旧版教务登录…")
+        for attempt in range(1, 6):
+            try:
+                if _login_direct_legacy(sess, username, password, config["webvpn_base"]):
+                    save_cookies(sess, data_dir)
+                    return sess
+            except Exception as e:
+                log.warning(f"教务登录异常({attempt}/5): {e}")
+            if attempt < 5:
+                time.sleep(2)
+        log.error("WebVPN 通道下的旧版教务登录连续失败")
+        return None
+
+    if use_cas:
+        log.info("直连 CAS 登录…")
+        for attempt in range(1, 6):
+            try:
+                if _login_direct_cas(sess, username, password, base_url):
+                    save_cookies(sess, data_dir)
+                    return sess
+            except Exception as e:
+                log.warning(f"教务登录异常({attempt}/5): {e}")
+            if attempt < 5:
+                time.sleep(2)
+    else:
+        log.info("使用旧版教务登录…")
+        for attempt in range(1, 6):
+            try:
+                if _login_direct_legacy(sess, username, password, base_url):
+                    save_cookies(sess, data_dir)
+                    return sess
+            except Exception as e:
+                log.warning(f"教务登录异常({attempt}/5): {e}")
+            if attempt < 5:
+                time.sleep(2)
 
     log.error("教务系统登录连续失败")
     return None
