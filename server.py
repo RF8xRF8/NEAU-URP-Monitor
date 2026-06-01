@@ -248,13 +248,14 @@ def login_page():
         import time # 确保顶部导入了 time
         u, p = request.form.get("username", "").strip(), request.form.get("password", "").strip()
         if u == USERNAME and p == PASSWORD:
+            time.sleep(0.5)
             session.permanent = True
             session["logged_in"] = True
             session["user"] = u
             return redirect(url_for("dashboard"))
         
         # 密码错误时，强制延迟 2 秒响应，防御暴力破解
-        time.sleep(2)
+        time.sleep(1)
         error = "Authentication Failed."
     return render_template_string(LOGIN_HTML, error=error)
 

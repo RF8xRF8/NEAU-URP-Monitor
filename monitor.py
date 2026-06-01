@@ -215,7 +215,7 @@ def _analyze_login_failure(resp_text: str, resp_url: str) -> tuple[bool, str]:
         "用户名或密码错误", "账号或密码错误", "学号或密码错误", "密码错误", "用户名错误"
     )
     captcha_pats = (
-        "验证码错误", "验证码不正确", "验证码有误", "captcha", "验证码"
+        "验证码错误", "验证码不正确", "验证码有误", "安全验证", "滑块", "拼图", "captcha", "验证码"
     )
 
     if any(p in text for p in password_pats):
@@ -223,6 +223,127 @@ def _analyze_login_failure(resp_text: str, resp_url: str) -> tuple[bool, str]:
     if any(p in text.lower() for p in captcha_pats) or "captcha" in resp_url.lower():
         return True, "教务登录失败：验证码识别失败，准备重试"
     return True, "教务登录失败：未知原因，准备重试"
+
+
+def _response_needs_slider_captcha(resp_text: str, resp_url: str) -> bool:
+    """判断登录响应是否真的弹出了滑块验证码。"""
+    retryable, reason = _analyze_login_failure(resp_text, resp_url)
+    return retryable and "验证码识别失败" in reason
+
+
+def _slider_move_length(match_result: dict, tag_width: float | int | None,
+                        source_width: float | int | None, canvas_length: float | int = 280) -> float:
+    """把 ddddocr 的匹配结果转成验证接口需要的拖动距离。"""
+    target_x = match_result.get("target_x")
+    if target_x is None:
+        target = match_result.get("target")
+        if isinstance(target, (list, tuple)) and target:
+            target_x = target[0]
+    move_length = float(target_x or 0.0)
+    if source_width:
+        scale = float(canvas_length) / float(source_width)
+        move_length *= scale
+        if tag_width:
+            move_length -= float(tag_width) * scale / 2.0
+    elif tag_width:
+        move_length -= float(tag_width) / 2.0
+    return max(0.0, move_length)
+
+
+def _solve_slider_captcha(sess: requests.Session, authserver_base: str, login_url: str,
+                          ua: dict) -> bool:
+    """识别并校验 authserver 的拼图滑块验证码。"""
+    import os
+
+    os.environ.setdefault("ORT_DISABLE_ALL_OPTIMIZATIONS", "1")
+    os.environ.setdefault("ORT_DISABLE_GRAPH_OPTIMIZATION", "1")
+
+    try:
+        import ddddocr
+    except ImportError:
+        log.error("滑块验证码需要 ddddocr，请先安装依赖")
+        return False
+    except Exception as exc:
+        log.error(f"初始化 ddddocr 失败: {exc}")
+        return False
+
+    origin_base = authserver_base.rsplit("/authserver", 1)[0]
+    open_url = f"{authserver_base}/common/openSliderCaptcha.htl"
+    verify_url = f"{authserver_base}/common/verifySliderCaptcha.htl"
+    ajax_headers = {
+        **ua,
+        "Accept": "application/json, text/javascript, */*; q=0.01",
+        "X-Requested-With": "XMLHttpRequest",
+    }
+    verify_headers = {
+        **ajax_headers,
+        "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8",
+        "Origin": origin_base,
+        "Referer": login_url,
+    }
+
+    try:
+        ocr = ddddocr.DdddOcr(show_ad=False, ocr=False)
+    except Exception as exc:
+        log.error(f"ddddocr 初始化失败: {exc}")
+        return False
+
+    for round_idx in range(2):
+        try:
+            response = sess.get(open_url, headers={**ajax_headers, "Referer": login_url}, timeout=10)
+            payload = response.json()
+        except Exception as exc:
+            log.warning(f"滑块验证码获取失败({round_idx + 1}/2): {exc}")
+            continue
+
+        big_image_b64 = payload.get("bigImage") or ""
+        small_image_b64 = payload.get("smallImage") or ""
+        if not big_image_b64 or not small_image_b64:
+            return True
+
+        try:
+            big_image = base64.b64decode(big_image_b64)
+            small_image = base64.b64decode(small_image_b64)
+            try:
+                from io import BytesIO
+                from PIL import Image
+
+                source_width = Image.open(BytesIO(big_image)).size[0]
+            except Exception:
+                source_width = None
+            match_result = ocr.slide_match(small_image, big_image, simple_target=False)
+        except Exception as exc:
+            log.warning(f"滑块验证码识别失败({round_idx + 1}/2): {exc}")
+            continue
+
+        tag_width = payload.get("tagWidth")
+        base_move = _slider_move_length(match_result, tag_width, source_width)
+        move_candidates = []
+        for delta in (0.0, -1.0, 1.0, -2.0, 2.0):
+            candidate = max(0.0, base_move + delta)
+            if candidate not in move_candidates:
+                move_candidates.append(candidate)
+
+        for move_length in move_candidates:
+            try:
+                verify_response = sess.post(
+                    verify_url,
+                    data={"canvasLength": 280, "moveLength": move_length},
+                    headers=verify_headers,
+                    timeout=10,
+                )
+                verify_payload = verify_response.json()
+            except Exception as exc:
+                log.warning(f"滑块验证码校验请求失败: {exc}")
+                continue
+
+            if str(verify_payload.get("errorCode")) == "1":
+                log.info(f"滑块验证码识别成功，拖动距离约为 {move_length:.2f}")
+                return True
+
+        log.warning("滑块验证码校验失败，准备重新获取")
+
+    return False
 
 
 def _login_webvpn(sess: requests.Session, username: str, password: str,
@@ -269,6 +390,18 @@ def _login_webvpn(sess: requests.Session, username: str, password: str,
             allow_redirects=False, timeout=15)
 
     r = _submit(execution, salt)
+
+    if r.status_code in (200, 401) and _response_needs_slider_captcha(r.text, r.url):
+        log.info("WebVPN 登录响应包含滑块验证码，开始识别")
+        if not _solve_slider_captcha(sess, webvpn_auth, login_url, UA_MOBILE):
+            log.error("WebVPN 登录失败：滑块验证码校验未通过")
+            return False
+        params2 = _get_page_params(sess, post_url)
+        execution2 = params2.get("execution", "")
+        salt2 = params2.get("pub_key", "")
+        if execution2 or salt2:
+            r = _submit(execution2 or execution, salt2 or salt)
+
     if r.status_code == 200:
         params2 = _get_page_params(sess, post_url)
         ex2, sl2 = params2.get("execution", ""), params2.get("pub_key", "")
@@ -358,6 +491,17 @@ def _login_direct_cas(sess: requests.Session, username: str, password: str,
 
     r = _submit(execution, salt)
 
+    if r.status_code in (200, 401) and _response_needs_slider_captcha(r.text, r.url):
+        log.info("CAS 登录响应包含滑块验证码，开始识别")
+        if not _solve_slider_captcha(sess, DIRECT_CAS_AUTH, login_url, UA_PC):
+            log.error("CAS 登录失败：滑块验证码校验未通过")
+            return False
+        params2 = _get_page_params(sess, post_url, ua=UA_PC)
+        execution2 = params2.get("execution", "")
+        salt2 = params2.get("pub_key", "")
+        if execution2 or salt2:
+            r = _submit(execution2 or execution, salt2 or salt)
+
     if r.status_code == 200:
         params2 = _get_page_params(sess, post_url, ua=UA_PC)
         execution2 = params2.get("execution", "")
@@ -396,9 +540,16 @@ def _login_direct_legacy(sess: requests.Session, username: str, password: str,
                          base_url: str) -> bool:
     """5 月 6 日前的旧版教务登录：登录页 + 验证码 OCR。"""
     try:
+        import os
+        # 禁止 ddddocr 使用 SIMD 优化，避免在某些 Docker 环境里 Illegal instruction 崩溃
+        os.environ['ORT_DISABLE_ALL_OPTIMIZATIONS'] = '1'
+        os.environ['ORT_DISABLE_GRAPH_OPTIMIZATION'] = '1'
         import ddddocr
     except ImportError:
         log.error("旧版教务登录需要 ddddocr，请先安装依赖后再设置 use_cas=false")
+        return False
+    except Exception as e:
+        log.error(f"初始化 ddddocr 失败: {e}")
         return False
 
     log.info("使用旧版教务登录流程…")
@@ -411,7 +562,11 @@ def _login_direct_legacy(sess: requests.Session, username: str, password: str,
     m = re.search(r'(?:name|id)=["\']tokenValue["\'][^>]*value=["\']([^"\']{10,})["\']', page.text)
     tok = m.group(1) if m else ""
 
-    ocr = ddddocr.DdddOcr(show_ad=False)
+    try:
+        ocr = ddddocr.DdddOcr(show_ad=False)
+    except Exception as e:
+        log.error(f"ddddocr 初始化失败: {e}")
+        return False
 
     for attempt in range(5):
         try:
@@ -624,23 +779,118 @@ def fetch_this_term_scores(sess: requests.Session, base_url: str) -> dict | list
         return None
 
 
-def fetch_all_scores(sess: requests.Session, base_url: str) -> dict | list | None:
-    """抓取历史全部成绩，原样返回服务器 JSON。"""
-    index_url = f"{base_url}/student/integratedQuery/scoreQuery/schemeScores/index"
+def _normalize_all_score_record(record: dict) -> dict:
+    """将 allTermScores 返回的字段归一化为项目内部常用成绩结构。"""
+    kch = str(record.get("KCH") or record.get("courseNumber") or record.get("kch") or "").strip()
+    kcm = str(record.get("KCM") or record.get("courseName") or record.get("kcm") or "").strip()
+    xf = str(record.get("XF") or record.get("credit") or record.get("xf") or "").strip()
+    cj = str(record.get("KCCJ") or record.get("score") or record.get("cj") or record.get("courseScore") or "").strip()
+    grade_name = str(record.get("DJM") or record.get("gradeName") or record.get("grade") or "").strip()
+    cjlrfsdm = str(record.get("CJLRFSDM") or record.get("scoreEntryModeCode") or record.get("cjlrfsdm") or "").strip()
+    jd = str(record.get("JD") or record.get("gradePoint") or record.get("gradePointScore") or "").strip()
+    normalized = dict(record)
+    normalized.update({
+        "kch": kch,
+        "courseNumber": kch,
+        "kcm": kcm,
+        "courseName": kcm,
+        "xf": xf,
+        "credit": xf,
+        "cj": cj,
+        "score": cj,
+        "gradeName": grade_name,
+        "grade": grade_name,
+        "cjlrfsdm": cjlrfsdm,
+        "scoreEntryModeCode": cjlrfsdm,
+    })
+    if jd:
+        normalized["jd"] = jd
+        normalized["gradePoint"] = jd
+        normalized["gradePointScore"] = jd
+    return normalized
+
+
+def fetch_all_scores(sess: requests.Session, base_url: str) -> list[dict] | None:
+    """抓取历史全部成绩，返回归一化后的成绩列表。"""
+    index_url = f"{base_url}/student/integratedQuery/scoreQuery/allTermScores/index"
     try:
         r_idx = sess.get(index_url, headers=UA_PC, timeout=10)
         if "login" in r_idx.url:
             return None
-        token_seg = _extract_score_token(r_idx.url, r_idx.text, "schemeScores")
-        cb_url = (f"{base_url}/student/integratedQuery/scoreQuery/{token_seg}/schemeScores/callback"
-                  if token_seg else f"{base_url}/student/integratedQuery/scoreQuery/schemeScores/callback")
-        r = sess.get(cb_url, headers={**UA_PC, "X-Requested-With": "XMLHttpRequest",
-                                       "Referer": index_url}, timeout=15)
+        token_seg = _extract_score_token(r_idx.url, r_idx.text, "allTermScores")
+        data_url = (f"{base_url}/student/integratedQuery/scoreQuery/{token_seg}/allTermScores/data"
+                    if token_seg else f"{base_url}/student/integratedQuery/scoreQuery/allTermScores/data")
+        base_payload = {
+            "zxjxjhh": "",
+            "cjlx": "1",
+            "kch": "",
+            "kcm": "",
+            "pageSize": "300",
+        }
+
+        def _post_scores(page_num: int):
+            payload = dict(base_payload)
+            payload["pageNum"] = str(page_num)
+            return sess.post(
+                data_url,
+                data=payload,
+                headers={**UA_PC, "X-Requested-With": "XMLHttpRequest", "Referer": index_url},
+                timeout=15,
+            )
+
+        r = _post_scores(1)
         if "login" in r.url:
             return None
         data = r.json()
+
+        if isinstance(data, dict):
+            score_list = data.get("list")
+            if isinstance(score_list, dict):
+                total_count = None
+                page_context = score_list.get("pageContext")
+                if isinstance(page_context, dict):
+                    total_count = page_context.get("totalCount")
+                records = score_list.get("records")
+                if isinstance(total_count, int) and total_count > 0:
+                    merged_records = list(records) if isinstance(records, list) else []
+                    page_num = 2
+                    while len(merged_records) < total_count:
+                        r_page = _post_scores(page_num)
+                        if "login" in r_page.url:
+                            return None
+                        page_data = r_page.json()
+                        page_list = page_data.get("list") if isinstance(page_data, dict) else None
+                        page_records = page_list.get("records") if isinstance(page_list, dict) else None
+                        if isinstance(page_records, list):
+                            merged_records.extend(page_records)
+                        else:
+                            break
+                        page_num += 1
+                    normalized = [
+                        _normalize_all_score_record(item)
+                        for item in merged_records
+                        if isinstance(item, dict)
+                    ]
+                    log.info(f"[历史成绩] 抓取成功，结构类型=list, 条数={len(normalized)}")
+                    return normalized
+                if isinstance(records, list):
+                    normalized = [
+                        _normalize_all_score_record(item)
+                        for item in records
+                        if isinstance(item, dict)
+                    ]
+                    log.info(f"[历史成绩] 抓取成功，结构类型=list, 条数={len(normalized)}")
+                    return normalized
+        if isinstance(data, list):
+            normalized = [
+                _normalize_all_score_record(item)
+                for item in data
+                if isinstance(item, dict)
+            ]
+            log.info(f"[历史成绩] 抓取成功，结构类型=list, 条数={len(normalized)}")
+            return normalized
         log.info(f"[历史成绩] 抓取成功，结构类型={type(data).__name__}")
-        return data
+        return []
     except Exception as e:
         log.error(f"抓取历史成绩失败: {e}")
         return None
