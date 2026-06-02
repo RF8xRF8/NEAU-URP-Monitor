@@ -779,122 +779,28 @@ def fetch_this_term_scores(sess: requests.Session, base_url: str) -> dict | list
         return None
 
 
-def _normalize_all_score_record(record: dict) -> dict:
-    """将 allTermScores 返回的字段归一化为项目内部常用成绩结构。"""
-    kch = str(record.get("KCH") or record.get("courseNumber") or record.get("kch") or "").strip()
-    kcm = str(record.get("KCM") or record.get("courseName") or record.get("kcm") or "").strip()
-    xf = str(record.get("XF") or record.get("credit") or record.get("xf") or "").strip()
-    cj = str(record.get("KCCJ") or record.get("score") or record.get("cj") or record.get("courseScore") or "").strip()
-    grade_name = str(record.get("DJM") or record.get("gradeName") or record.get("grade") or "").strip()
-    cjlrfsdm = str(record.get("CJLRFSDM") or record.get("scoreEntryModeCode") or record.get("cjlrfsdm") or "").strip()
-    jd = str(record.get("JD") or record.get("gradePoint") or record.get("gradePointScore") or "").strip()
-    normalized = dict(record)
-    normalized.update({
-        "kch": kch,
-        "courseNumber": kch,
-        "kcm": kcm,
-        "courseName": kcm,
-        "xf": xf,
-        "credit": xf,
-        "cj": cj,
-        "score": cj,
-        "gradeName": grade_name,
-        "grade": grade_name,
-        "cjlrfsdm": cjlrfsdm,
-        "scoreEntryModeCode": cjlrfsdm,
-    })
-    if jd:
-        normalized["jd"] = jd
-        normalized["gradePoint"] = jd
-        normalized["gradePointScore"] = jd
-    return normalized
 
 
-def fetch_all_scores(sess: requests.Session, base_url: str) -> list[dict] | None:
-    """抓取历史全部成绩，返回归一化后的成绩列表。"""
-    index_url = f"{base_url}/student/integratedQuery/scoreQuery/allTermScores/index"
+def fetch_all_scores(sess: requests.Session, base_url: str) -> dict | list | None:
+    """抓取历史全部成绩，原样返回服务器 JSON。"""
+    index_url = f"{base_url}/student/integratedQuery/scoreQuery/schemeScores/index"
     try:
         r_idx = sess.get(index_url, headers=UA_PC, timeout=10)
         if "login" in r_idx.url:
             return None
-        token_seg = _extract_score_token(r_idx.url, r_idx.text, "allTermScores")
-        data_url = (f"{base_url}/student/integratedQuery/scoreQuery/{token_seg}/allTermScores/data"
-                    if token_seg else f"{base_url}/student/integratedQuery/scoreQuery/allTermScores/data")
-        base_payload = {
-            "zxjxjhh": "",
-            "cjlx": "1",
-            "kch": "",
-            "kcm": "",
-            "pageSize": "300",
-        }
-
-        def _post_scores(page_num: int):
-            payload = dict(base_payload)
-            payload["pageNum"] = str(page_num)
-            return sess.post(
-                data_url,
-                data=payload,
-                headers={**UA_PC, "X-Requested-With": "XMLHttpRequest", "Referer": index_url},
-                timeout=15,
-            )
-
-        r = _post_scores(1)
+        token_seg = _extract_score_token(r_idx.url, r_idx.text, "schemeScores")
+        cb_url = (f"{base_url}/student/integratedQuery/scoreQuery/{token_seg}/schemeScores/callback"
+                  if token_seg else f"{base_url}/student/integratedQuery/scoreQuery/schemeScores/callback")
+        r = sess.get(cb_url, headers={**UA_PC, "X-Requested-With": "XMLHttpRequest",
+                                       "Referer": index_url}, timeout=15)
         if "login" in r.url:
             return None
         data = r.json()
-
-        if isinstance(data, dict):
-            score_list = data.get("list")
-            if isinstance(score_list, dict):
-                total_count = None
-                page_context = score_list.get("pageContext")
-                if isinstance(page_context, dict):
-                    total_count = page_context.get("totalCount")
-                records = score_list.get("records")
-                if isinstance(total_count, int) and total_count > 0:
-                    merged_records = list(records) if isinstance(records, list) else []
-                    page_num = 2
-                    while len(merged_records) < total_count:
-                        r_page = _post_scores(page_num)
-                        if "login" in r_page.url:
-                            return None
-                        page_data = r_page.json()
-                        page_list = page_data.get("list") if isinstance(page_data, dict) else None
-                        page_records = page_list.get("records") if isinstance(page_list, dict) else None
-                        if isinstance(page_records, list):
-                            merged_records.extend(page_records)
-                        else:
-                            break
-                        page_num += 1
-                    normalized = [
-                        _normalize_all_score_record(item)
-                        for item in merged_records
-                        if isinstance(item, dict)
-                    ]
-                    log.info(f"[历史成绩] 抓取成功，结构类型=list, 条数={len(normalized)}")
-                    return normalized
-                if isinstance(records, list):
-                    normalized = [
-                        _normalize_all_score_record(item)
-                        for item in records
-                        if isinstance(item, dict)
-                    ]
-                    log.info(f"[历史成绩] 抓取成功，结构类型=list, 条数={len(normalized)}")
-                    return normalized
-        if isinstance(data, list):
-            normalized = [
-                _normalize_all_score_record(item)
-                for item in data
-                if isinstance(item, dict)
-            ]
-            log.info(f"[历史成绩] 抓取成功，结构类型=list, 条数={len(normalized)}")
-            return normalized
         log.info(f"[历史成绩] 抓取成功，结构类型={type(data).__name__}")
-        return []
+        return data
     except Exception as e:
         log.error(f"抓取历史成绩失败: {e}")
         return None
-
 
 def fetch_gpa_overview(sess: requests.Session, base_url: str) -> dict | None:
     """抓取 GPA 概览，原样返回服务器 JSON 中的第一条数据项。"""
