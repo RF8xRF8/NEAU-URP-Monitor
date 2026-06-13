@@ -870,7 +870,7 @@ def _gpa_rank_missing(raw_gpa) -> bool:
 
     def _blank(value) -> bool:
         text = str(value).strip()
-        return text == "" or text == "-" or text.lower() == "none"
+        return text in ("", "-", "/", "—", "--") or text.lower() == "none"
 
     class_rank = None
     grade_rank = None
@@ -1289,9 +1289,9 @@ def send_notify(config: dict, title: str, content: str):
         log.info("PushDeer key 未配置，跳过推送")
         return
     try:
-        r = requests.get(
+        r = requests.post(
             "https://api2.pushdeer.com/message/push",
-            params={"pushkey": key, "text": title, "desp": content, "type": "markdown"},
+            data={"pushkey": key, "text": title, "desp": content, "type": "markdown"},
             timeout=10,
         )
         if r.status_code == 200:
@@ -1563,7 +1563,7 @@ def run_once(config: dict):
     raw_gpa = fetch_gpa_overview(sess, base_url)
     if raw_gpa is not None:
         if _gpa_rank_missing(raw_gpa):
-            log.info("[GPA] 发现空排名，跳过本次记录")
+            log.info("[GPA] 发现空排名（教务系统凌晨重算窗口），跳过本次记录与保存")
         else:
             old_gpa = load_data(data_dir, "gpa")
 
@@ -1591,7 +1591,7 @@ def run_once(config: dict):
 
     # ── 推送 ─────────────────────────────────────────────────────
     if notify_parts:
-        send_notify(config, "📚 教务系统有新变动", "\n".join(notify_parts))
+        send_notify(config, "📚 教务系统有新变动", "\n\n".join(notify_parts))
     elif is_first_run_any:
         send_notify(config, "✅ 教务监控首次抓取成功",
                     "已完成首次数据抓取，后续变动将第一时间推送。")

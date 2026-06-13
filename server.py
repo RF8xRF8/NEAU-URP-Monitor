@@ -895,7 +895,7 @@ tr:hover td{background:var(--surface)}
     </div>
     <div class="nav-item" onclick="showView('scores-all')" id="nav-scores-all">
       <span class="icon"><svg viewBox="0 0 24 24"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg></span>
-      历史全部成绩
+      全部成绩
     </div>
     <div class="nav-section">变动记录</div>
     <div class="nav-item" onclick="showView('changes')" id="nav-changes">
@@ -969,7 +969,7 @@ tr:hover td{background:var(--surface)}
           <div class="stat-num" id="st-ts">—</div>
         </div>
         <div class="stat-card clickable" onclick="showView('scores-all')">
-          <div class="stat-label"><svg viewBox="0 0 24 24"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>历史成绩</div>
+          <div class="stat-label"><svg viewBox="0 0 24 24"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>全部成绩</div>
           <div class="stat-num" id="st-as">—</div>
         </div>
 
@@ -1025,13 +1025,13 @@ tr:hover td{background:var(--surface)}
       </div>
     </div>
 
-    <!-- 历史成绩 -->
+    <!-- 全部成绩 -->
     <div class="view" id="view-scores-all">
       <div class="panel">
         <div class="panel-head">
           <div class="panel-title">
             <svg viewBox="0 0 24 24"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
-            历史全部成绩
+            全部成绩
           </div>
           <div class="filter-row">
             <input class="search-box" placeholder="搜索课程名 / 课程号…" oninput="filterScores('all',this.value)">
@@ -1053,7 +1053,7 @@ tr:hover td{background:var(--surface)}
             <button class="filter-btn active" onclick="filterChanges('',this)">全部</button>
             <button class="filter-btn" onclick="filterChanges('schedule',this)">课程表</button>
             <button class="filter-btn" onclick="filterChanges('this_term_scores',this)">本学期成绩</button>
-            <button class="filter-btn" onclick="filterChanges('all_scores',this)">历史成绩</button>
+            <button class="filter-btn" onclick="filterChanges('all_scores',this)">全部成绩</button>
             <button class="filter-btn" onclick="filterChanges('gpa',this)">GPA</button>
           </div>
         </div>
@@ -1074,7 +1074,7 @@ tr:hover td{background:var(--surface)}
             <button class="filter-btn active" onclick="setHistoryType('',this)">全部</button>
             <button class="filter-btn" onclick="setHistoryType('schedule',this)">课程表</button>
             <button class="filter-btn" onclick="setHistoryType('this_term_scores',this)">本学期成绩</button>
-            <button class="filter-btn" onclick="setHistoryType('all_scores',this)">历史成绩</button>
+            <button class="filter-btn" onclick="setHistoryType('all_scores',this)">全部成绩</button>
             <button class="filter-btn" onclick="setHistoryType('gpa',this)">GPA</button>
           </div>
         </div>
@@ -1238,7 +1238,7 @@ const VIEW_META = {
   overview:      {title:'概览仪表盘',    sub:'教务系统数据概览'},
   schedule:      {title:'本学期课程表',  sub:'当前学期所有排课信息（按课序号+课程号去重）'},
   'scores-term': {title:'本学期成绩',    sub:'本学期已录入的成绩'},
-  'scores-all':  {title:'历史全部成绩',  sub:'累计所有已通过课程成绩'},
+  'scores-all':  {title:'全部成绩',  sub:'累计所有已通过课程成绩'},
   changes:       {title:'变动日志',      sub:'监控检测到的所有数据变动'},
   history:       {title:'历史数据归档',  sub:'抓取数据的历史归档快照'},
 };
@@ -1335,6 +1335,7 @@ async function loadOverview() {
   await Promise.all([loadStatus(), loadGpaInfo()]);
   try {
     const d = await api('/api/changes?limit=5');
+    _currentChanges = d.data;
     const el = document.getElementById('overview-changes');
     if (!d.data.length) { el.innerHTML = emptyHtml('暂无变动记录'); return; }
     el.innerHTML = '<div class="timeline" style="padding:16px 20px">' +
@@ -1922,32 +1923,37 @@ function scoresTable(kind, data, filter) {
   S.renderedScores[kind] = rows;
   if (!rows.length) return emptyHtml('暂无成绩数据');
 
+  const isTerm = kind === 'term';
   const rowsHtml = rows.map((s, idx) => {
     const { display: cjDisp, isGrade } = getScoreDisplay(s);
     const jd = s.jd || s.gradePoint || s.gradePointScore || '—';
     const xf = s.xf || s.credit || '—';
     const kch = s.kch || s.courseNumber || (s.id && s.id.courseNumber) || '';
     const kcm = s.kcm || s.courseName || '';
+    const avgcj = s.avgcj || '';
     const cjHtml = `<span class="score-num ${scoreColor(cjDisp)}">${esc(cjDisp)}</span>` +
       (isGrade ? ` <span style="font-size:.65rem;color:var(--muted);font-family:var(--mono)">[等级]</span>` : '');
+    const avgHtml = isTerm ? `<td style="font-family:var(--mono)">${avgcj !== '' ? esc(String(avgcj)) : '<span style="color:var(--muted)">—</span>'}</td>` : '';
     return `<tr class="click-row" onclick="openScoreDetail('${kind}',${idx})" title="点击查看详情">
       <td>${esc(kcm)}</td>
       <td style="font-family:var(--mono);font-size:.75rem;color:var(--muted)">${esc(kch||'-')}</td>
       <td>${cjHtml}</td>
+      ${avgHtml}
       <td style="font-family:var(--mono)">${esc(String(jd))}</td>
       <td style="font-family:var(--mono)">${esc(String(xf))}</td>
     </tr>`;
   }).join('');
 
+  const avgTh = isTerm ? '<th>课程均分</th>' : '';
   return `<table><thead><tr>
-    <th>课程名称</th><th>课程号</th><th>成绩</th><th>绩点</th><th>学分</th>
+    <th>课程名称</th><th>课程号</th><th>成绩</th>${avgTh}<th>绩点</th><th>学分</th>
   </tr></thead><tbody>${rowsHtml}</tbody></table>`;
 }
 
 function openScoreDetail(kind, idx) {
   const s = (S.renderedScores[kind] || [])[idx];
   if (!s) return;
-  const title = kind === 'all' ? '历史成绩详情' : '本学期成绩详情';
+  const title = kind === 'all' ? '全部成绩详情' : '本学期成绩详情';
   // 展示所有字段，空值用 - 代替
   const flat = _flatten(s);
   const rows = Object.entries(flat).map(([k, v]) => {
@@ -2155,7 +2161,7 @@ function renderPager() {
 // 历史归档
 // ══════════════════════════════════════════════════════════════════
 function typeLabel(t) {
-  return {schedule:'课程表', this_term_scores:'本学期成绩', all_scores:'历史成绩', gpa:'GPA'}[t] || t || '-';
+  return {schedule:'课程表', this_term_scores:'本学期成绩', all_scores:'全部成绩', gpa:'GPA'}[t] || t || '-';
 }
 
 async function loadHistory() {
