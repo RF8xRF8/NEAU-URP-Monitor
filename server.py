@@ -63,7 +63,7 @@ app.secret_key = os.environ.get("FLASK_SECRET_KEY", os.urandom(24).hex())
 app.permanent_session_lifetime = timedelta(hours=1)
 
 # ── 学期配置 ─────────────────────────────────────────────────────
-SEMESTER_START = datetime(2026, 3, 2)   # 修改为实际的学期开始日期（周一）
+SEMESTER_START = datetime(2026, 8, 24)   # 修改为实际的学期开始日期（周一）
 
 def get_current_week() -> int:
     days_passed = (datetime.now() - SEMESTER_START).days
