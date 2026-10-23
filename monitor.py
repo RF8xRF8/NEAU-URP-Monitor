@@ -169,10 +169,10 @@ def _get_page_params(sess: requests.Session, url: str, ua: dict | None = None) -
     return result
 
 
-def _do_webvpn_reauth(sess: requests.Session, reauth_url: str,
-                      password: str, webvpn_auth: str, cas_service: str) -> bool:
+def _do_webvpn_reauth(sess: requests.Session, reauth_url: str, password: str,
+                      auth_base: str, callback_url: str) -> bool:
     if not reauth_url.startswith("http"):
-        reauth_url = f"{webvpn_auth.rsplit('/authserver', 1)[0]}{reauth_url}"
+        reauth_url = f"{auth_base.rsplit('/authserver', 1)[0]}{reauth_url}"
     log.info(f"二次认证页: {reauth_url}")
     params = _get_page_params(sess, reauth_url)
     try:
@@ -182,8 +182,8 @@ def _do_webvpn_reauth(sess: requests.Session, reauth_url: str,
         enc_pwd = password
 
     r = sess.post(
-        f"{webvpn_auth}/reAuthCheck/reAuthSubmit.do",
-        data={"service": f"{cas_service}/callback?url", "reAuthType": "2", "password": enc_pwd},
+        f"{auth_base}/reAuthCheck/reAuthSubmit.do",
+        data={"service": callback_url, "reAuthType": "2", "password": enc_pwd},
         headers={**UA_MOBILE, "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8",
                  "X-Requested-With": "XMLHttpRequest", "Referer": reauth_url},
         timeout=15,
@@ -195,15 +195,19 @@ def _do_webvpn_reauth(sess: requests.Session, reauth_url: str,
                 or d.get("success") or str(d.get("status", "")).lower() == "success"
                 or "成功" in str(d.get("msg", ""))):
             log.info("二次认证成功")
+            # 二次认证只是放行，票据要等 CAS 回调到门户后才落到 _webvpn_key
+            sess.get(callback_url, headers=UA_MOBILE, allow_redirects=True, timeout=15)
             return True
         redirect = d.get("url") or d.get("redirectUrl") or d.get("location")
         if redirect:
             sess.get(redirect, headers=UA_MOBILE, allow_redirects=True, timeout=10)
+            sess.get(callback_url, headers=UA_MOBILE, allow_redirects=True, timeout=15)
             return True
         log.error(f"二次认证失败: {d}")
         return False
     except Exception:
         if any(k in text for k in ("success", "成功", "redirect")):
+            sess.get(callback_url, headers=UA_MOBILE, allow_redirects=True, timeout=15)
             return True
         log.error(f"二次认证响应无法解析: {text[:100]}")
         return False
@@ -346,20 +350,20 @@ def _solve_slider_captcha(sess: requests.Session, authserver_base: str, login_ur
     return False
 
 
-def _login_webvpn(sess: requests.Session, username: str, password: str,
-                  webvpn_auth: str, webvpn_base: str, cas_service: str) -> bool:
+def _webvpn_cas_login(sess: requests.Session, username: str, password: str,
+                      auth_base: str, callback_url: str) -> bool:
+    """在指定 CAS 主机上完成登录 + 二次认证，并回调 WebVPN 门户换取会话票据。"""
     from urllib.parse import urljoin
-    base_auth = webvpn_auth.rsplit("/authserver", 1)[0]
-    login_url = f"{webvpn_auth}/login?service={cas_service}/callback?url"
-    sess.headers.update(UA_MOBILE)
-    log.info("WebVPN 使用手机 UA 登录")
+    base_auth = auth_base.rsplit("/authserver", 1)[0]
+    login_url = f"{auth_base}/login?service={callback_url}"
+    log.info(f"WebVPN 通过 {auth_base} 登录")
 
     try:
         ajax_h = {**UA_MOBILE, "X-Requested-With": "XMLHttpRequest", "Referer": base_auth + "/"}
         sess.get(base_auth, headers=UA_MOBILE, allow_redirects=True, timeout=10)
-        sess.post(f"{base_auth}/authserver/common/getLanguageTypes.htl", data={}, headers=ajax_h, timeout=10)
-        sess.get(f"{base_auth}/authserver/tenant/info", headers=ajax_h, timeout=10)
-        sess.post(f"{base_auth}/authserver/common/getLanguageTypes.htl", data={}, headers=ajax_h, timeout=10)
+        sess.post(f"{auth_base}/common/getLanguageTypes.htl", data={}, headers=ajax_h, timeout=10)
+        sess.get(f"{auth_base}/tenant/info", headers=ajax_h, timeout=10)
+        sess.post(f"{auth_base}/common/getLanguageTypes.htl", data={}, headers=ajax_h, timeout=10)
     except Exception as ex:
         log.warning(f"WebVPN 预热失败(可忽略): {ex}")
 
@@ -369,7 +373,7 @@ def _login_webvpn(sess: requests.Session, username: str, password: str,
     post_url = params.get("final_url", login_url)
 
     if not execution:
-        log.error("WebVPN 登录失败：未获取 execution")
+        log.error(f"WebVPN 登录失败：未获取 execution（{auth_base}）")
         return False
 
     def _submit(ex: str, sl: str):
@@ -393,7 +397,7 @@ def _login_webvpn(sess: requests.Session, username: str, password: str,
 
     if r.status_code in (200, 401) and _response_needs_slider_captcha(r.text, r.url):
         log.info("WebVPN 登录响应包含滑块验证码，开始识别")
-        if not _solve_slider_captcha(sess, webvpn_auth, login_url, UA_MOBILE):
+        if not _solve_slider_captcha(sess, auth_base, login_url, UA_MOBILE):
             log.error("WebVPN 登录失败：滑块验证码校验未通过")
             return False
         params2 = _get_page_params(sess, post_url)
@@ -421,16 +425,36 @@ def _login_webvpn(sess: requests.Session, username: str, password: str,
         landing_url = r_next.url
 
     if "reAuthCheck" in landing_url or "reAuthLoginView" in landing_url:
-        if not _do_webvpn_reauth(sess, landing_url, password, webvpn_auth, cas_service):
+        if not _do_webvpn_reauth(sess, landing_url, password, auth_base, callback_url):
             return False
+    else:
+        # 没有二次认证时也要走一遍回调，门户才会下发 _webvpn_key
+        sess.get(callback_url, headers=UA_MOBILE, allow_redirects=True, timeout=15)
+
+    return True
+
+
+def _login_webvpn(sess: requests.Session, username: str, password: str,
+                  webvpn_auth: str, webvpn_base: str, cas_service: str) -> bool:
+    callback_url = f"{cas_service}/callback"
+    sess.headers.update(UA_MOBILE)
+
+    # 直连 CAS 才能拿到门户票据。走 authserver-443.webvpn... 时只能登录 CAS 本体，
+    # 门户会话始终建立不起来，后续访问教务资源会被重定向回登录页（验证码接口返回 HTML）。
+    auth_bases = [a for a in dict.fromkeys([DIRECT_CAS_AUTH, webvpn_auth]) if a]
+    for auth_base in auth_bases:
+        if _webvpn_cas_login(sess, username, password, auth_base, callback_url):
+            break
+    else:
+        return False
 
     try:
         probe = sess.get(f"{webvpn_base}/login", headers=UA_MOBILE, allow_redirects=True, timeout=10)
-        if probe.status_code != 200:
-            log.error(f"WebVPN 建立后探测教务页失败: HTTP {probe.status_code}")
-            return False
     except Exception as ex:
         log.error(f"WebVPN 探测教务页异常: {ex}")
+        return False
+    if probe.status_code != 200 or "authserver" in probe.url or "vpn_key" in probe.url:
+        log.error(f"WebVPN 会话未建立，访问教务页被重定向到 {probe.url}")
         return False
 
     log.info("WebVPN 通道已建立")
@@ -572,6 +596,12 @@ def _login_direct_legacy(sess: requests.Session, username: str, password: str,
         try:
             r_cap = sess.get(f"{base_url}/img/captcha.jpg", headers=UA_PC, timeout=10)
             r_cap.raise_for_status()
+            if not r_cap.content.startswith((b"\xff\xd8\xff", b"\x89PNG", b"GIF8")):
+                # 会话失效时接口会返回登录页 HTML，ddddocr 只会抛 "cannot identify image file"
+                raise ValueError(
+                    f"验证码接口返回的不是图片（{r_cap.headers.get('Content-Type')}，"
+                    f"{len(r_cap.content)} 字节，最终地址 {r_cap.url}），会话可能已失效"
+                )
             cap_raw = ocr.classification(r_cap.content)
             cap_text = cap_raw.strip() if isinstance(cap_raw, str) else str(cap_raw).strip()
             log.info(f"验证码识别: {cap_text}")
