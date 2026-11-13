@@ -170,7 +170,7 @@ def _get_page_params(sess: requests.Session, url: str, ua: dict | None = None) -
 
 
 def _do_webvpn_reauth(sess: requests.Session, reauth_url: str, password: str,
-                      auth_base: str, callback_url: str) -> bool:
+                      auth_base: str, service_url: str) -> bool:
     if not reauth_url.startswith("http"):
         reauth_url = f"{auth_base.rsplit('/authserver', 1)[0]}{reauth_url}"
     log.info(f"二次认证页: {reauth_url}")
@@ -183,7 +183,9 @@ def _do_webvpn_reauth(sess: requests.Session, reauth_url: str, password: str,
 
     r = sess.post(
         f"{auth_base}/reAuthCheck/reAuthSubmit.do",
-        data={"service": callback_url, "reAuthType": "2", "password": enc_pwd},
+        data={"service": service_url, "reAuthType": "2", "isMultifactor": "",
+              "password": enc_pwd, "dynamicCode": "", "uuid": "",
+              "answer1": "", "answer2": "", "otpCode": ""},
         headers={**UA_MOBILE, "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8",
                  "X-Requested-With": "XMLHttpRequest", "Referer": reauth_url},
         timeout=15,
@@ -195,19 +197,16 @@ def _do_webvpn_reauth(sess: requests.Session, reauth_url: str, password: str,
                 or d.get("success") or str(d.get("status", "")).lower() == "success"
                 or "成功" in str(d.get("msg", ""))):
             log.info("二次认证成功")
-            # 二次认证只是放行，票据要等 CAS 回调到门户后才落到 _webvpn_key
-            sess.get(callback_url, headers=UA_MOBILE, allow_redirects=True, timeout=15)
+            # 认证只是放行；ticket 要由调用方重新请求 CAS 登录地址换取
             return True
         redirect = d.get("url") or d.get("redirectUrl") or d.get("location")
         if redirect:
             sess.get(redirect, headers=UA_MOBILE, allow_redirects=True, timeout=10)
-            sess.get(callback_url, headers=UA_MOBILE, allow_redirects=True, timeout=15)
             return True
         log.error(f"二次认证失败: {d}")
         return False
     except Exception:
         if any(k in text for k in ("success", "成功", "redirect")):
-            sess.get(callback_url, headers=UA_MOBILE, allow_redirects=True, timeout=15)
             return True
         log.error(f"二次认证响应无法解析: {text[:100]}")
         return False
@@ -350,12 +349,34 @@ def _solve_slider_captcha(sess: requests.Session, authserver_base: str, login_ur
     return False
 
 
+def _webvpn_ticket_exchange(sess: requests.Session, login_url: str) -> None:
+    """
+    重新请求一次 CAS 登录地址以换取 ticket。
+
+    浏览器流程（HAR）里，二次认证成功后页面会重新打开登录地址，CAS 随即 302 到
+    .../users/auth/cas/callback?url&ticket=ST-...，门户再经 /vpn_key/update 下发
+    _webvpn_key。少了这一步，后续访问教务资源会被重定向回认证页。
+    """
+    for attempt in range(3):
+        try:
+            r = sess.get(login_url, headers=UA_MOBILE, allow_redirects=True, timeout=20)
+        except Exception as ex:
+            log.warning(f"换取 WebVPN 票据失败({attempt + 1}/3): {ex}")
+            time.sleep(1)
+            continue
+        if "ticket=" in r.url or "_webvpn_key" in {c.name for c in sess.cookies}:
+            return
+        log.warning(f"未拿到 ticket（最终地址 {r.url}），准备重试")
+        time.sleep(1)
+    log.warning("未能换取 WebVPN 票据，门户会话可能不完整")
+
+
 def _webvpn_cas_login(sess: requests.Session, username: str, password: str,
-                      auth_base: str, callback_url: str) -> bool:
-    """在指定 CAS 主机上完成登录 + 二次认证，并回调 WebVPN 门户换取会话票据。"""
+                      auth_base: str, service_url: str) -> bool:
+    """在指定 CAS 主机上完成登录 + 二次认证，并换到 WebVPN 门户会话票据。"""
     from urllib.parse import urljoin
     base_auth = auth_base.rsplit("/authserver", 1)[0]
-    login_url = f"{auth_base}/login?service={callback_url}"
+    login_url = f"{auth_base}/login?service={service_url}"
     log.info(f"WebVPN 通过 {auth_base} 登录")
 
     try:
@@ -425,40 +446,42 @@ def _webvpn_cas_login(sess: requests.Session, username: str, password: str,
         landing_url = r_next.url
 
     if "reAuthCheck" in landing_url or "reAuthLoginView" in landing_url:
-        if not _do_webvpn_reauth(sess, landing_url, password, auth_base, callback_url):
+        if not _do_webvpn_reauth(sess, landing_url, password, auth_base, service_url):
             return False
-    else:
-        # 没有二次认证时也要走一遍回调，门户才会下发 _webvpn_key
-        sess.get(callback_url, headers=UA_MOBILE, allow_redirects=True, timeout=15)
 
+    _webvpn_ticket_exchange(sess, login_url)
     return True
 
 
 def _login_webvpn(sess: requests.Session, username: str, password: str,
                   webvpn_auth: str, webvpn_base: str, cas_service: str) -> bool:
-    callback_url = f"{cas_service}/callback"
+    # 与浏览器一致：service 末尾带 ?url，认证后由 CAS 回调到门户
+    service_url = f"{cas_service}/callback?url"
     sess.headers.update(UA_MOBILE)
 
-    # 直连 CAS 才能拿到门户票据。走 authserver-443.webvpn... 时只能登录 CAS 本体，
-    # 门户会话始终建立不起来，后续访问教务资源会被重定向回登录页（验证码接口返回 HTML）。
-    auth_bases = [a for a in dict.fromkeys([DIRECT_CAS_AUTH, webvpn_auth]) if a]
+    # 优先走 WebVPN 自带的 -443 认证机（学校当前的有效入口），直连 CAS 作为备选
+    auth_bases = [a for a in dict.fromkeys([webvpn_auth, DIRECT_CAS_AUTH]) if a]
+    probe_url = f"{webvpn_base}/login"
+    last_url = ""
     for auth_base in auth_bases:
-        if _webvpn_cas_login(sess, username, password, auth_base, callback_url):
-            break
-    else:
-        return False
+        if not _webvpn_cas_login(sess, username, password, auth_base, service_url):
+            sess.cookies.clear()
+            continue
+        try:
+            probe = sess.get(probe_url, headers=UA_MOBILE, allow_redirects=True, timeout=10)
+        except Exception as ex:
+            log.warning(f"WebVPN 探测教务页异常({auth_base}): {ex}")
+            sess.cookies.clear()
+            continue
+        if probe.status_code == 200 and "authserver" not in probe.url and "vpn_key" not in probe.url:
+            log.info("WebVPN 通道已建立")
+            return True
+        last_url = probe.url
+        log.warning(f"经 {auth_base} 登录后仍被重定向到 {probe.url}")
+        sess.cookies.clear()
 
-    try:
-        probe = sess.get(f"{webvpn_base}/login", headers=UA_MOBILE, allow_redirects=True, timeout=10)
-    except Exception as ex:
-        log.error(f"WebVPN 探测教务页异常: {ex}")
-        return False
-    if probe.status_code != 200 or "authserver" in probe.url or "vpn_key" in probe.url:
-        log.error(f"WebVPN 会话未建立，访问教务页被重定向到 {probe.url}")
-        return False
-
-    log.info("WebVPN 通道已建立")
-    return True
+    log.error(f"WebVPN 会话未建立，访问教务页被重定向到 {last_url}")
+    return False
 
 
 def _login_direct_cas(sess: requests.Session, username: str, password: str,
